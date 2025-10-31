@@ -97,3 +97,18 @@ graph TD;
 | **AI Critical Care Physician** | Arterial\_Ammonia, Creat, F27Q04, HCO3, Hemoglobin, INR1, Infection, Lactate, Lymph, NA, PMN, Phosphate, Platelet\_Cnt, Ratio\_PO2\_FiO2, Trt\_CVVH, Trt\_Pressors, Trt\_Ventilator, Venous\_Ammonia, WBC, ammonia |
 | **AI Psychiatrist** | Pre\_NAC\_IV |
 | **AI Social Worker** | Hispanic, Sex |
+
+## Example of Binning Continuous Data
+
+| Variable | Value | Interpretation (Input to LLM) |
+| :--- | :--- | :--- |
+| **Lactate** | 1.8 | Normal |
+| **Lactate** | 3.5 | Elevated (Hyperlactatemia) |
+| **Lactate** | 7.0 | Severely Elevated (Lactic Acidosis) |
+| **Lactate** | 9.2 | Critical (High Mortality Risk) |
+| **Creatinine** | 0.8 | Normal |
+| **Creatinine** | 1.6 | High (Meets Stage 1 AKI criteria) |
+| **Creatinine** | 2.5 | Severely High (Stage 2 AKI) |
+| **INR** | 1.0 | Normal |
+| **INR** | 1.8 | Elevated (Hepatic Dysfunction) |
+| **INR** | 3.1 | Severely Elevated (Synthetic Failure) |
