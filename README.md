@@ -12,18 +12,17 @@ graph TD;
     C --> D(Data Router);
 
     subgraph "🤖 Parallel Multi-Agent AI Committee"
-        direction: TD
         D -- "Hepato Vars" --> E[AI Hepatologist];
         D -- "ICU Vars" --> F[AI Critical Care Physician];
         D -- "Surgical/MELD Vars" --> G[AI Transplant Surgeon];
         D -- "Etiology Vars" --> H[AI Psychiatrist];
         D -- "Demographic Vars" --> I[AI Social Worker];
 
-        E --> E_out(Hepatologist Output \n Decision: ... \n Reasoning: ...);
-        F --> F_out(Critical Care Output \n Decision: ... \n Reasoning: ...);
-        G --> G_out(Surgeon Output \n Decision: ... \n Reasoning: ...);
-        H --> H_out(Psychiatrist Output \n Decision: ... \n Reasoning: ...);
-        I --> I_out(Social Worker Output \n Decision: ... \n Reasoning: ...);
+        E --> E_out("Hepatologist Output \n Decision: ... \n Reasoning: ...");
+        F --> F_out("Critical Care Output \n Decision: ... \n Reasoning: ...");
+        G --> G_out("Surgeon Output \n Decision: ... \n Reasoning: ...");
+        H --> H_out("Psychiatrist Output \n Decision: ... \n Reasoning: ...");
+        I --> I_out("Social Worker Output \n Decision: ... \n Reasoning: ...");
     end
 
     subgraph "⚖️ Final Synthesis"
