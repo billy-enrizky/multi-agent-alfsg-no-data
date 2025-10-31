@@ -11,7 +11,7 @@ graph TD;
     
     C --> D(Data Router);
 
-    subgraph "🤖 Parallel Multi-Agent AI Committee"
+    subgraph "Parallel Multi-Agent AI Committee"
         D -- "Hepato Vars" --> E[AI Hepatologist];
         D -- "ICU Vars" --> F[AI Critical Care Physician];
         D -- "Surgical/MELD Vars" --> G[AI Transplant Surgeon];
@@ -32,10 +32,10 @@ graph TD;
         H_out --> J;
         I_out --> J;
         
-        J -- "Applies weighting logic \n (e.g., Critical Care=30%, Surgeon=30%)" --> K(Weighted Analysis);
+        J -- "Applies weighting logic \n (e.g., Critical Care=30%, Surgeon=30%)" --> K("Weighted Analysis");
     end
 
-    K --> L[🏆 Final Recommendation \n (e.g., 'Category 2: Urgent LT')];
+    K --> L["Final Recommendation \n (e.g., 'Category 2: Urgent LT')"];
 
     %% Styling
     style A fill:#fbe9e7,stroke:#c8b7b5,stroke-width:2px
@@ -55,4 +55,3 @@ graph TD;
     style K fill:#42a5f5,stroke:#1e88e5,stroke-width:3px,color:#fff
     style L fill:#4caf50,stroke:#388e3c,stroke-width:4px,color:#fff
 ```
-
