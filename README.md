@@ -118,9 +118,9 @@ graph TD;
 
 | Time Series Data (Raw) | Interpretation (Input to LLM) |
 | :--- | :--- |
-| `Lactate (mmol/L) @ [0h, 6h, 12h]` <br> `[2.1, 4.5, 7.0]` | **Trend: Rapidly Worsening.** Lactate is rising quickly from 2.1 to 7.0, indicating worsening shock or metabolic collapse. |
+| `Lactate (mmol/L) @ [Day 1, Day 2, Day 3]` <br> `[2.1, 4.5, 7.0]` | **Trend: Rapidly Worsening.** Lactate is rising quickly from 2.1 to 7.0, indicating worsening shock or metabolic collapse. |
 | `INR @ [Day 1, Day 2, Day 3]` <br> `[2.5, 2.4, 2.5]` | **Trend: Stable (High).** INR is holding steady at a high level of 2.5, indicating persistent severe liver synthetic failure. |
 | `Creatinine (mg/dL) @ [Day 1, Day 2, Day 3]` <br> `[1.9, 1.6, 1.4]` | **Trend: Improving.** Renal function is showing slow improvement, with Creatinine trending down from 1.9 to 1.4. |
-| `F27Q04 (HE Grade) @ [0h, 8h, 16h]` <br> `[1, 2, 3]` | **Trend: Neurologic Deterioration.** Hepatic encephalopathy is worsening from Grade 1 to Grade 3, a critical change. |
+| `F27Q04 (HE Grade) @ [Day 1, Day 2, Day 3]` <br> `[1, 2, 3]` | **Trend: Neurologic Deterioration.** Hepatic encephalopathy is worsening from Grade 1 to Grade 3, a critical change. |
 | `ALT (U/L) @ [Day 1, Day 2, Day 3]` <br> `[7500, 4200, 2100]` | **Trend: Rapidly Improving (Washout).** ALT is in rapid decline, consistent with recovery or washout after an acute insult. |
-| `WBC (k/uL) @ [0h, 12h]` <br> `[8.2, 17.5]` | **Trend: Sudden Spike.** WBC has spiked from 8.2 to 17.5, suggesting a new inflammatory process or developing infection. |
+| `WBC (k/uL) @ [Day 1, Day 2]` <br> `[8.2, 17.5]` | **Trend: Sudden Spike.** WBC has spiked from 8.2 to 17.5, suggesting a new inflammatory process or developing infection. |
