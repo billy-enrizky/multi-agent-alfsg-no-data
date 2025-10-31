@@ -5,7 +5,7 @@ Multi Agent AI Transplant Committee for ALFSG project
 
 ```mermaid
 graph TD;
-    A[Raw Patient Data (Daily)] --> B{"Preprocessing Engine \n (Scripted/Data Analyzer Agent)"};
+    A{"Raw Patient Data (Daily)"} --> B{"Preprocessing Engine \n (Scripted/Data Analyzer Agent)"};
     
     B -- "1. Label Categorical (e.g., Trt_Pressors: 1 -> 'Yes')" --> C[Clinical Vignettes \n (Features for Day `i`)];
     B -- "2. Bin Continuous (e.g., Lactate: 10.5 -> 'Critical')" --> C;
