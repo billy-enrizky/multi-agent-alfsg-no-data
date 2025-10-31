@@ -52,9 +52,9 @@ graph TD;
 
 | Variable | Type | Description | Primary Agent(s) |
 | :--- | :--- | :--- | :--- |
-| **Sex** | Binary | Biological sex (male/female). | AI Hepatologist, AI Social Worker |
-| **Hispanic** | Binary | Ethnicity indicator (Hispanic / non-Hispanic). | AI Social Worker |
-| **Pre\_NAC\_IV** | Binary | Prior intravenous N-acetylcysteine administration. | AI Hepatologist, AI Psychiatrist |
+| **Sex** | Binary | Biological sex (male/female). | AI Hepatologist |
+| **Hispanic** | Binary | Ethnicity indicator (Hispanic / non-Hispanic). | AI Hepatologist, AI Transplant Surgeon |
+| **Pre\_NAC\_IV** | Binary | Prior intravenous N-acetylcysteine administration. | AI Hepatologist |
 | **F27Q04** | Categorical | Clinical grade of hepatic encephalopathy. | AI Critical Care Physician, AI Hepatologist, AI Transplant Surgeon |
 | **Hemoglobin** | Continuous | Hemoglobin concentration. | AI Critical Care Physician, AI Transplant Surgeon |
 | **WBC** | Continuous | White blood cell count. | AI Critical Care Physician, AI Hepatologist |
@@ -83,11 +83,9 @@ graph TD;
 
 | Agent | Assigned Variables |
 | :--- | :--- |
-| **AI Hepatologist** | ALT, Arterial\_Ammonia, Bilirubin, Creat, F27Q04, INR1, Lymph, Platelet\_Cnt, Pre\_NAC\_IV, Prothrom\_Sec, Sex, Venous\_Ammonia, WBC, ammonia |
-| **AI Transplant Surgeon** | Bilirubin, Creat, F27Q04, Hemoglobin, INR1, Infection, NA, Platelet\_Cnt, Prothrom\_Sec, Ratio\_PO2\_FiO2, Trt\_CVVH, Trt\_Pressors, Trt\_Ventilator |
+| **AI Hepatologist** | ALT, Arterial\_Ammonia, Bilirubin, Creat, F27Q04, Hispanic, INR1, Lymph, Platelet\_Cnt, Pre\_NAC\_IV, Prothrom\_Sec, Sex, Venous\_Ammonia, WBC, ammonia |
+| **AI Transplant Surgeon** | Bilirubin, Creat, F27Q04, Hemoglobin, Hispanic, INR1, Infection, NA, Platelet\_Cnt, Prothrom\_Sec, Ratio\_PO2\_FiO2, Trt\_CVVH, Trt\_Pressors, Trt\_Ventilator |
 | **AI Critical Care Physician** | Arterial\_Ammonia, Creat, F27Q04, HCO3, Hemoglobin, INR1, Infection, Lactate, Lymph, NA, PMN, Phosphate, Platelet\_Cnt, Ratio\_PO2\_FiO2, Trt\_CVVH, Trt\_Pressors, Trt\_Ventilator, Venous\_Ammonia, WBC, ammonia |
-| **AI Psychiatrist** | Pre\_NAC\_IV |
-| **AI Social Worker** | Hispanic, Sex |
 
 ## Example of Binning Continuous Data
 
