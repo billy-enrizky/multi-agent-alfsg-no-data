@@ -6,7 +6,7 @@ Multi Agent AI Transplant Committee for ALFSG project
 ```mermaid
 graph TD;
     A[Raw Patient Data] --> B{Preprocessing Engine};
-    B -- "1. Bin Continuous (e.g., Lactate: 10.5 -> 'Critical')" --> C[Processed Qualitative Data];
+    B -- "1. Bin Continuous (e.g., Lactate: 10.5 -> 'Critical')" --> C[Clinical Vignettes];
     B -- "2. Label Categorical (e.g., Trt_Pressors: 1 -> 'Yes')" --> C;
     
     C --> D(Data Router);
