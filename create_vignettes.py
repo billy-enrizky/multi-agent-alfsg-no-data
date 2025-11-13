@@ -345,10 +345,15 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
                     vignette[f"{var}_binned"] = None
                     vignette[f"{var}_value"] = None
             
-            # Add trend information (comparing to previous day)
-            if day > 1:
-                prev_day = str(day - 1)
-                for var in continuous_vars:
+            # Add trend information (comparing to previous days)
+            # For day i, calculate:
+            # - Day i-1 to Day i (current period, 1 day)
+            # - Day i-2 to Day i-1 (previous period, 1 day)
+            # - Day i-3 to Day i-1 (longer term, 2 days)
+            for var in continuous_vars:
+                # Current period: Day i-1 to Day i
+                if day > 1:
+                    prev_day = str(day - 1)
                     current_col = f"{var}_day_{day_str}"
                     prev_col = f"{var}_day_{prev_day}"
                     
@@ -363,10 +368,51 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
                             vignette[f"{var}_trend"] = None
                     else:
                         vignette[f"{var}_trend"] = None
-            else:
-                # Day 1 (Admission) has no trend
-                for var in continuous_vars:
+                else:
+                    # Day 1 (Admission) has no current trend
                     vignette[f"{var}_trend"] = None
+                
+                # Previous period: Day i-2 to Day i-1
+                if day > 2:
+                    prev1_day = str(day - 1)
+                    prev2_day = str(day - 2)
+                    prev1_col = f"{var}_day_{prev1_day}"
+                    prev2_col = f"{var}_day_{prev2_day}"
+                    
+                    if prev1_col in df.columns and prev2_col in df.columns:
+                        prev1_val = row[prev1_col]
+                        prev2_val = row[prev2_col]
+                        
+                        if not pd.isna(prev1_val) and not pd.isna(prev2_val):
+                            trend = calculate_trend_detailed(prev1_val, prev2_val, 1, var)
+                            vignette[f"{var}_trend_prev1"] = trend
+                        else:
+                            vignette[f"{var}_trend_prev1"] = None
+                    else:
+                        vignette[f"{var}_trend_prev1"] = None
+                else:
+                    vignette[f"{var}_trend_prev1"] = None
+                
+                # Longer term: Day i-3 to Day i-1 (2-day span)
+                if day > 3:
+                    prev1_day = str(day - 1)
+                    prev3_day = str(day - 3)
+                    prev1_col = f"{var}_day_{prev1_day}"
+                    prev3_col = f"{var}_day_{prev3_day}"
+                    
+                    if prev1_col in df.columns and prev3_col in df.columns:
+                        prev1_val = row[prev1_col]
+                        prev3_val = row[prev3_col]
+                        
+                        if not pd.isna(prev1_val) and not pd.isna(prev3_val):
+                            trend = calculate_trend_detailed(prev1_val, prev3_val, 2, var)
+                            vignette[f"{var}_trend_prev2"] = trend
+                        else:
+                            vignette[f"{var}_trend_prev2"] = None
+                    else:
+                        vignette[f"{var}_trend_prev2"] = None
+                else:
+                    vignette[f"{var}_trend_prev2"] = None
             
             # Add binary treatment variables with text labels
             for treatment in ['Infection', 'Trt_Ventilator', 'Trt_Pressors', 'Trt_CVVH', 'F27Q04']:
