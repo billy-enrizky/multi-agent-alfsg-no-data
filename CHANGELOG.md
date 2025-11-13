@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-11-13 01:42:21
+
+### Changed
+
+- **Day Column Naming**
+  - "Admission" values in `zVisitNm` column are now mapped to "day 1" instead of "day_Admission"
+  - Column naming updated: `variable_day_Admission` → `variable_day_1`
+  - All day columns now use consistent numeric format: `variable_day_1`, `variable_day_2`, `variable_day_3`, etc.
+  - Updated `extract_day_number()` function to return '1' for "ALF Admission" values
+
 ## [0.2.1] - 2025-11-13 01:25:00
 
 ### Security
@@ -62,8 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added support for extracting specific target variables from Excel files
   - Implemented `zVisitNm` column handling with automatic unstacking:
     - Variables with `zVisitNm` are unstacked from rows to columns
-    - Format: `variable_day_2`, `variable_day_3`, `variable_day_Admission`, etc.
-    - Handles day extraction from values like "ALF Day 2", "ALF Admission"
+    - Format: `variable_day_1`, `variable_day_2`, `variable_day_3`, etc. (updated in v0.2.2)
+    - Handles day extraction from values like "ALF Admission" (→ day 1), "ALF Day 2", etc.
 
 - **Output Files**
   - `subject_ids.xlsx`: Contains single column with all unique subject IDs (2,631 subjects)
@@ -91,5 +101,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Data Transformation**
   - Variables with `zVisitNm`: Pivoted from long to wide format with day suffixes
   - Variables without `zVisitNm`: Kept as single columns (one value per subject)
-  - Day extraction handles: "ALF Admission", "ALF Day 2", "ALF Day 3", etc.
+  - Day extraction handles: "ALF Admission" (→ day 1), "ALF Day 2", "ALF Day 3", etc. (updated in v0.2.2)
 
