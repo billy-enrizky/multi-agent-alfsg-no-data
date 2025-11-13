@@ -1,6 +1,13 @@
 import pandas as pd
 import logging
+import io
+import os
 from pathlib import Path
+import msoffcrypto
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -45,10 +52,14 @@ EXCEL_FILES = [
     'subjects_unique_08NOV2024.xlsx'
 ]
 
-def read_excel_file(filepath):
-    """Try to read an Excel file with different engines."""
+# Password for encrypted Excel files (loaded from environment variable)
+EXCEL_PASSWORD = os.getenv("EXCEL_PASSWORD")
+
+def read_excel_file(filepath, password=None):
+    """Try to read an Excel file with different engines. If it fails, try decrypting with password."""
     engines = ['openpyxl', 'xlrd']
     
+    # First, try reading normally
     for engine in engines:
         try:
             df = pd.read_excel(filepath, engine=engine)
@@ -58,7 +69,34 @@ def read_excel_file(filepath):
             logger.debug(f"Failed to read {filepath} with {engine}: {e}")
             continue
     
-    logger.warning(f"Could not read {filepath} with any engine")
+    # If normal reading failed, try decrypting if password is provided
+    if password:
+        try:
+            logger.info(f"Attempting to decrypt {filepath} with password")
+            decrypted_workbook = io.BytesIO()
+            
+            with open(filepath, 'rb') as file:
+                office_file = msoffcrypto.OfficeFile(file)
+                office_file.load_key(password=password)
+                office_file.decrypt(decrypted_workbook)
+            
+            # Reset the stream position
+            decrypted_workbook.seek(0)
+            
+            # Try reading the decrypted file
+            for engine in engines:
+                try:
+                    df = pd.read_excel(decrypted_workbook, engine=engine)
+                    logger.info(f"Successfully read decrypted {filepath} with {engine}")
+                    return df
+                except Exception as e:
+                    logger.debug(f"Failed to read decrypted {filepath} with {engine}: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.warning(f"Failed to decrypt {filepath}: {e}")
+    
+    logger.warning(f"Could not read {filepath} with any method")
     return None
 
 def extract_day_number(zvisit_nm):
@@ -165,7 +203,8 @@ def main():
             logger.warning(f"File not found: {filepath}")
             continue
         
-        df = read_excel_file(filepath)
+        # Try reading with password for encrypted files
+        df = read_excel_file(filepath, password=EXCEL_PASSWORD)
         if df is not None:
             dataframes[filepath] = df
     

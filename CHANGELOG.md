@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-11-13 01:25:00
+
+### Security
+
+- **Password Management**
+  - Removed hardcoded password from source code
+  - Added `python-dotenv` dependency for environment variable management
+  - Password now loaded from `.env` file using `os.getenv("EXCEL_PASSWORD")`
+  - `.env` file is already in `.gitignore` to prevent accidental commits
+
+## [0.2.0] - 2025-11-13 01:23:44
+
+### Added
+
+- **Encrypted File Support**
+  - Added `msoffcrypto-tool` dependency for decrypting password-protected Excel files
+  - Implemented automatic decryption in `read_excel_file()` function
+  - All 4 Excel files now readable (previously 2 were encrypted)
+
+### Changed
+
+- **Complete Variable Extraction**
+  - Now successfully extracts all 28 target variables (previously only 8)
+  - All lab variables from encrypted files are now available:
+    - `Hemoglobin`, `WBC`, `PMN`, `Lymph`, `Platelet_Cnt`, `Prothrom_Sec`, `ALT`, `Bilirubin`, `Creat`, `NA`, `HCO3`, `Phosphate`, `Lactate`, `PH`, `Arterial_Ammonia`, `Venous_Ammonia`, `INR1`, `ammonia`, `Ratio_PO2_FiO2`, `F27Q04`
+  - Final output: 2,569 subjects with 173 columns (all variables unstacked by day)
+
+### Fixed
+
+- **Encrypted Files Issue Resolved**
+  - `subjects_comagr_12MAR2025.xlsx` - now successfully decrypted and read
+  - `subjects_labsV2_12MAR2025.xlsx` - now successfully decrypted and read
+  - No missing variables remaining
+
+### Technical Details
+
+- **Decryption Implementation**
+  - Uses `msoffcrypto.OfficeFile` to decrypt password-protected Excel files
+  - Decrypted content is streamed to `io.BytesIO` for pandas to read
+  - Falls back to decryption if normal file reading fails
+  - Password loaded from environment variable using `python-dotenv` and `os.getenv("EXCEL_PASSWORD")`
+
 ## [0.1.0] - 2025-11-13 01:17:36
 
 ### Added
@@ -25,26 +67,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Output Files**
   - `subject_ids.xlsx`: Contains single column with all unique subject IDs (2,631 subjects)
-  - `merged_subjects.xlsx`: Contains inner-joined data with all target variables (2,629 subjects, 33 columns)
+  - `merged_subjects.xlsx`: Contains inner-joined data with all target variables (2,629 subjects, 33 columns) - **Updated in v0.2.0: 2,569 subjects, 173 columns**
 
 - **Variable Extraction**
   - Successfully extracted 8 target variables from readable files:
     - `Spont_Survival21`, `Sex`, `Hispanic`, `Pre_NAC_IV`
     - `Infection`, `Trt_Ventilator`, `Trt_Pressors`, `Trt_CVVH` (unstacked by day)
   - Automatic mapping of `male` column to `Sex` variable
+  - **Updated in v0.2.0: All 28 target variables now extracted**
 
 - **Logging and Reporting**
   - Comprehensive logging throughout the processing pipeline
   - Variable summary report showing found vs missing variables
-  - Warnings for encrypted files that cannot be read
-
-### Known Issues
-
-- **Encrypted Files**
-  - `subjects_comagr_12MAR2025.xlsx` (CDFV2 Encrypted) - cannot be read
-  - `subjects_labsV2_12MAR2025.xlsx` (CDFV2 Encrypted) - cannot be read
-  - These files likely contain the missing 20 lab variables:
-    - `ALT`, `Arterial_Ammonia`, `Bilirubin`, `Creat`, `F27Q04`, `HCO3`, `Hemoglobin`, `INR1`, `Lactate`, `Lymph`, `NA`, `PH`, `PMN`, `Phosphate`, `Platelet_Cnt`, `Prothrom_Sec`, `Ratio_PO2_FiO2`, `Venous_Ammonia`, `WBC`, `ammonia`
+  - Warnings for encrypted files that cannot be read - **Resolved in v0.2.0**
 
 ### Technical Details
 
