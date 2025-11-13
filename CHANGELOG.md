@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-11-13 10:09:57
+
+### Changed
+
+- **Categorical Text Labels**
+  - Added descriptive text columns for categorical variables in `create_vignettes.py`
+  - `Sex`, `Hispanic`, `Pre_NAC_IV` now include human-readable labels
+  - Treatment indicators and coma grade (`Infection`, `Trt_Ventilator`, `Trt_Pressors`, `Trt_CVVH`, `F27Q04`) now output clinical descriptions
+  - Updated `clinical_vignettes.xlsx` to include `_text` columns alongside raw values
+
+## [0.3.0] - 2025-11-13 01:51:37
+
+### Added
+
+- **Clinical Vignette Creation**
+  - Created `create_vignettes.py` script to generate clinical vignettes for each patient-day combination
+  - Implemented clinical binning for 18 continuous variables using medical thresholds:
+    - Lactate, Creatinine, INR1, Hemoglobin, WBC, Platelet_Cnt, Bilirubin, ALT, NA, HCO3, Phosphate, PH, Arterial_Ammonia, Venous_Ammonia, ammonia, Ratio_PO2_FiO2, Prothrom_Sec, PMN, Lymph
+  - Binning categories: Normal, Elevated, High, Critical (with clinical context)
+  - Time series trend analysis between consecutive days:
+    - Calculates rate of change and trend direction (Rapidly Worsening, Improving, Stable, etc.)
+    - Includes context about bin transitions (e.g., "from Normal to Elevated")
+    - Day 1 (Admission) has no trend data (as expected)
+  - Output: `clinical_vignettes.xlsx` with 17,983 vignettes (2,569 subjects × ~7 days)
+  - Each vignette contains: subject_id, day, Spont_Survival21 (target), static variables, binned values, raw values, trends, and treatment variables
+
+### Technical Details
+
+- **Binning Implementation**
+  - Uses clinical thresholds based on medical literature and README examples
+  - Each variable has 3-4 bins with descriptive labels
+  - Handles missing values gracefully
+  - Preserves original values alongside binned categories
+
+- **Trend Calculation**
+  - Calculates percentage change between consecutive days
+  - Classifies trends: Rapidly Worsening/Improving, Worsening/Improving, Mildly Increasing/Decreasing, Stable
+  - Includes contextual information about bin transitions
+  - Only calculated for days 2-7 (Day 1 has no previous day for comparison)
+
 ## [0.2.2] - 2025-11-13 01:42:21
 
 ### Changed
