@@ -100,14 +100,14 @@ def read_excel_file(filepath, password=None):
     return None
 
 def extract_day_number(zvisit_nm):
-    """Extract day number from zVisitNm values like 'ALF Day 2' -> '2', 'ALF Admission' -> 'Admission'."""
+    """Extract day number from zVisitNm values like 'ALF Day 2' -> '2', 'ALF Admission' -> '1'."""
     if pd.isna(zvisit_nm):
         return None
     
     zvisit_str = str(zvisit_nm).strip()
     
     if 'Admission' in zvisit_str:
-        return 'Admission'
+        return '1'  # Admission is treated as day 1
     elif 'Day' in zvisit_str:
         # Extract number after "Day"
         parts = zvisit_str.split('Day')
@@ -172,8 +172,7 @@ def process_dataframe(df, filepath):
                 )
                 
                 # Rename columns to variable_dayX format
-                pivot_df.columns = [f"{var}_day_{col}" if col != 'Admission' else f"{var}_day_Admission" 
-                                   for col in pivot_df.columns]
+                pivot_df.columns = [f"{var}_day_{col}" for col in pivot_df.columns]
                 
                 unstacked_dfs.append(pivot_df)
         

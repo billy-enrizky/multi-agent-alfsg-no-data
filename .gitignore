@@ -210,3 +210,4 @@ __marimo__/
 *.xlsx
 *.xls
 .DS_Store
+.cursor
