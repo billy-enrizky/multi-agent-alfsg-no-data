@@ -413,7 +413,100 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Created {len(vignettes_df)} vignettes for {vignettes_df['subject_id'].nunique()} subjects")
     logger.info(f"Vignette shape: {vignettes_df.shape}")
     
+    # Create comprehensive clinical vignette text
+    logger.info("Creating comprehensive clinical vignettes...")
+    vignettes_df['patient_day_vignette'] = vignettes_df.apply(create_comprehensive_vignette, axis=1)
+    
     return vignettes_df
+
+def create_comprehensive_vignette(row: pd.Series) -> str:
+    """Create a comprehensive clinical vignette text from all available data."""
+    parts = []
+    
+    # Patient identification
+    parts.append(f"Patient {int(row['subject_id'])} on Day {int(row['day'])}")
+    
+    # Demographics section
+    demo_parts = []
+    if pd.notna(row.get('Sex_text')):
+        demo_parts.append(f"is {row['Sex_text'].lower()}")
+    if pd.notna(row.get('Hispanic_text')):
+        demo_parts.append(f"is {row['Hispanic_text'].lower()}")
+    if pd.notna(row.get('Pre_NAC_IV_text')):
+        if 'received' in row['Pre_NAC_IV_text'].lower() or 'yes' in row['Pre_NAC_IV_text'].lower():
+            demo_parts.append("has received prior IV N-acetylcysteine")
+        else:
+            demo_parts.append("has not received prior IV N-acetylcysteine")
+    
+    if demo_parts:
+        parts.append("Patient " + ", ".join(demo_parts) + ".")
+    
+    # Laboratory values section
+    continuous_vars = [var for var in BINNING_THRESHOLDS.keys() if f"{var}_binned" in row.index]
+    
+    lab_parts = []
+    for var in continuous_vars:
+        var_name = var.replace('_', ' ')
+        binned = row.get(f"{var}_binned")
+        
+        if pd.notna(binned):
+            lab_parts.append(f"{var_name} is {binned.lower()}")
+    
+    if lab_parts:
+        parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
+    
+    # Trend history section
+    trend_parts = []
+    for var in continuous_vars:
+        var_name = var.replace('_', ' ')
+        trend_history = row.get(f"{var}_trend_history")
+        
+        if pd.notna(trend_history):
+            trend_parts.append(f"{var_name} trend shows {trend_history.lower()}")
+    
+    if trend_parts:
+        parts.append("Trend analysis: " + "; ".join(trend_parts) + ".")
+    
+    # Clinical status and treatments
+    clinical_parts = []
+    
+    if pd.notna(row.get('Infection_text')):
+        if 'yes' in row['Infection_text'].lower() or 'documented' in row['Infection_text'].lower():
+            clinical_parts.append("has documented infection")
+        else:
+            clinical_parts.append("has no documented infection")
+    
+    if pd.notna(row.get('Trt_Ventilator_text')):
+        if 'yes' in row['Trt_Ventilator_text'].lower() or 'receiving' in row['Trt_Ventilator_text'].lower():
+            clinical_parts.append("is receiving mechanical ventilation")
+        else:
+            clinical_parts.append("is not on mechanical ventilation")
+    
+    if pd.notna(row.get('Trt_Pressors_text')):
+        if 'yes' in row['Trt_Pressors_text'].lower() or 'receiving' in row['Trt_Pressors_text'].lower():
+            clinical_parts.append("is receiving vasopressor support")
+        else:
+            clinical_parts.append("is not receiving vasopressor support")
+    
+    if pd.notna(row.get('Trt_CVVH_text')):
+        if 'yes' in row['Trt_CVVH_text'].lower() or 'receiving' in row['Trt_CVVH_text'].lower():
+            clinical_parts.append("is receiving continuous renal replacement therapy (CVVH)")
+        else:
+            clinical_parts.append("is not receiving CVVH")
+    
+    if pd.notna(row.get('F27Q04_text')):
+        clinical_parts.append(f"has {row['F27Q04_text'].lower()}")
+    
+    if clinical_parts:
+        parts.append("Clinical status: " + "; ".join(clinical_parts) + ".")
+    
+    # Target outcome
+    if pd.notna(row.get('Spont_Survival21')):
+        survival = "yes" if row['Spont_Survival21'] == 1.0 else "no"
+        parts.append(f"Spontaneous survival at 21 days: {survival}.")
+    
+    # Join all parts with newlines
+    return "\n".join(parts)
 
 def main():
     logger.info("Starting vignette creation process")
