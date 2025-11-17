@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-11-17 00:15:27
+
+### Added
+
+- **Streamlit Web Application**
+  - Created beautiful, user-friendly Streamlit app (`streamlit_app.py`)
+  - Features:
+    - Automatic loading of `clinical_vignettes.xlsx`
+    - Patient ID dropdown (all available patients)
+    - Day dropdown (filtered by selected patient)
+    - Single "Predict Survival" button
+    - Displays clinical vignettes for each agent (Hepatologist, Critical Care, Transplant Surgeon)
+    - Shows individual agent decisions with reasoning and confidence scores
+    - Displays final committee prediction with reasoning and confidence
+    - Weighted voting breakdown visualization
+    - Color-coded confidence scores (high/medium/low)
+    - Patient information sidebar with actual survival outcome
+    - Dataset statistics display
+  - Beautiful UI with custom CSS styling, gradient cards, and responsive layout
+  - Caching for data loading and graph compilation for performance
+
+### Changed
+
+- **API Parameter Updates for gpt-5 Model**
+  - Replaced `max_tokens` with `max_completion_tokens` (required by gpt-5)
+  - Removed `temperature` parameter (gpt-5 only supports default value of 1)
+  - All 7 API calls updated across all agents
+
 ## [0.4.3] - 2025-11-16 23:55:00
 
 ### Changed
