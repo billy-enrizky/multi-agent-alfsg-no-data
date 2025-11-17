@@ -40,8 +40,7 @@ def create_categorical_label_sheet():
                 'Variable Name': var_name,
                 'Numeric Value': num_val,
                 'Text Label': text_label,
-                'Description': description,
-                'Transformation Method': 'Direct mapping from numeric code to descriptive text label'
+                'Description': description
             })
     
     return pd.DataFrame(rows)
@@ -90,9 +89,7 @@ def create_continuous_label_sheet():
                 'Variable Name': var_name,
                 'Unit': unit,
                 'Value Range': range_str,
-                'Binned Label': label,
-                'Clinical Context': clinical_context,
-                'Binning Method': 'Clinical thresholds based on medical literature and clinical practice guidelines'
+                'Binned Label': label
             })
     
     return pd.DataFrame(rows)
@@ -106,56 +103,47 @@ def create_time_trend_label_sheet():
         {
             'Percent Change Range': '< -100%',
             'Trend Label': 'Rapidly Improving',
-            'Description': 'Very large decrease (>100% reduction), indicating rapid clinical improvement',
-            'Clinical Interpretation': 'Significant positive change, often indicates recovery or effective treatment response'
+            'Description': 'Very large decrease (>100% reduction)'
         },
         {
             'Percent Change Range': '-100% to -50%',
             'Trend Label': 'Rapidly Decreasing',
-            'Description': 'Large decrease (50-100% reduction), indicating rapid decline in value',
-            'Clinical Interpretation': 'Rapid improvement for variables where lower is better (e.g., lactate, creatinine), or rapid worsening for variables where higher is better (e.g., hemoglobin)'
+            'Description': 'Large decrease (50-100% reduction)'
         },
         {
             'Percent Change Range': '-50% to -20%',
             'Trend Label': 'Improving',
-            'Description': 'Moderate decrease (20-50% reduction), indicating improvement',
-            'Clinical Interpretation': 'Positive trend, suggests improving clinical status'
+            'Description': 'Moderate decrease (20-50% reduction)'
         },
         {
             'Percent Change Range': '-20% to -5%',
             'Trend Label': 'Mildly Decreasing',
-            'Description': 'Small decrease (5-20% reduction), indicating mild improvement',
-            'Clinical Interpretation': 'Gradual positive change, may be within normal variation'
+            'Description': 'Small decrease (5-20% reduction)'
         },
         {
             'Percent Change Range': '-5% to +5%',
             'Trend Label': 'Stable',
-            'Description': 'Minimal change (<5% change in either direction), indicating stability',
-            'Clinical Interpretation': 'No significant change, values remain relatively constant'
+            'Description': 'Minimal change (<5% change in either direction)'
         },
         {
             'Percent Change Range': '+5% to +20%',
             'Trend Label': 'Mildly Increasing',
-            'Description': 'Small increase (5-20% increase), indicating mild change',
-            'Clinical Interpretation': 'Gradual change, may be within normal variation or early sign of trend'
+            'Description': 'Small increase (5-20% increase)'
         },
         {
             'Percent Change Range': '+20% to +50%',
             'Trend Label': 'Worsening',
-            'Description': 'Moderate increase (20-50% increase), indicating worsening',
-            'Clinical Interpretation': 'Negative trend for most clinical variables, suggests deteriorating clinical status'
+            'Description': 'Moderate increase (20-50% increase)'
         },
         {
             'Percent Change Range': '+50% to +100%',
             'Trend Label': 'Rapidly Increasing',
-            'Description': 'Large increase (50-100% increase), indicating rapid change',
-            'Clinical Interpretation': 'Significant change, may indicate acute clinical deterioration or response to intervention'
+            'Description': 'Large increase (50-100% increase)'
         },
         {
             'Percent Change Range': '> +100%',
             'Trend Label': 'Rapidly Worsening',
-            'Description': 'Very large increase (>100% increase), indicating dramatic change',
-            'Clinical Interpretation': 'Critical change, often indicates severe clinical deterioration or acute event'
+            'Description': 'Very large increase (>100% increase)'
         }
     ]
     
@@ -166,26 +154,22 @@ def create_time_trend_label_sheet():
         {
             'Percent Change Range': '---',
             'Trend Label': 'Calculation Method',
-            'Description': 'Percent change = ((current_value - previous_value) / previous_value) × 100',
-            'Clinical Interpretation': 'Calculated between consecutive days (day N to day N+1)'
+            'Description': 'Percent change = ((current_value - previous_value) / previous_value) × 100'
         },
         {
             'Percent Change Range': '---',
             'Trend Label': 'Context Enhancement',
-            'Description': 'Trend labels include bin context: "trend (from previous_bin to current_bin)" or "trend (remains bin)"',
-            'Clinical Interpretation': 'Provides clinical context by showing transitions between clinical severity categories'
+            'Description': 'Trend labels include bin context: "trend (from previous_bin to current_bin)" or "trend (remains bin)"'
         },
         {
             'Percent Change Range': '---',
             'Trend Label': 'Cumulative History',
-            'Description': 'For day i, shows all trends from day 1 to day i: "day 1 to day 2: trend, then day 2 to day 3: trend, ..."',
-            'Clinical Interpretation': 'Provides complete narrative of variable progression over time, allowing assessment of overall trajectory'
+            'Description': 'For day i, shows all trends from day 1 to day i: "day 1 to day 2: trend, then day 2 to day 3: trend, ..."'
         },
         {
             'Percent Change Range': '---',
             'Trend Label': 'Day 1 (Baseline)',
-            'Description': 'No trend data available (admission day, no previous day for comparison)',
-            'Clinical Interpretation': 'Baseline values only, trends begin from day 2 onwards'
+            'Description': 'No trend data available (admission day, no previous day for comparison)'
         }
     ]
     
