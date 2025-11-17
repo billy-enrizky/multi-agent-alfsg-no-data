@@ -5,8 +5,10 @@ import pandas as pd
 from typing import Literal, TypedDict
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -40,22 +42,20 @@ class AgentState(TypedDict):
     final_prediction: FinalPrediction | None
 
 def get_azure_openai_client():
-    """Initialize Azure OpenAI client with Entra ID authentication."""
-    endpoint = os.getenv("ENDPOINT_URL", "https://acf-project.openai.azure.com/")
-    deployment = os.getenv("DEPLOYMENT_NAME", "gpt-4o")
+    """Initialize Azure OpenAI client with API key authentication."""
+    endpoint = os.getenv("ENDPOINT_URL", "https://acf-project.openai.azure.com/openai/v1")
+    deployment_name = os.getenv("DEPLOYMENT_NAME", "gpt-4o")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
     
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
+    if not api_key:
+        raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
+    
+    client = OpenAI(
+        base_url=endpoint,
+        api_key=api_key
     )
     
-    client = AzureOpenAI(
-        azure_endpoint=endpoint,
-        azure_ad_token_provider=token_provider,
-        api_version="2025-01-01-preview",
-    )
-    
-    return client, deployment
+    return client, deployment_name
 
 
 def hepatologist_agent(state: AgentState) -> AgentState:
@@ -86,7 +86,7 @@ Clinical Vignette:
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment = get_azure_openai_client()
+        client, deployment_name = get_azure_openai_client()
         
         # Use JSON mode for structured output
         json_schema = AgentDecision.model_json_schema()
@@ -98,7 +98,7 @@ Please respond with a JSON object matching this schema:
 Return only valid JSON, no additional text."""
         
         completion = client.chat.completions.create(
-            model=deployment,
+            model=deployment_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json_prompt}
@@ -119,9 +119,9 @@ Return only valid JSON, no additional text."""
         logger.error(f"Error in Hepatologist agent: {e}")
         # Fallback to basic completion
         try:
-            client, deployment = get_azure_openai_client()
+            client, deployment_name = get_azure_openai_client()
             completion = client.chat.completions.create(
-                model=deployment,
+                model=deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -174,7 +174,7 @@ Clinical Vignette:
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment = get_azure_openai_client()
+        client, deployment_name = get_azure_openai_client()
         
         # Use JSON mode for structured output
         json_schema = AgentDecision.model_json_schema()
@@ -186,7 +186,7 @@ Please respond with a JSON object matching this schema:
 Return only valid JSON, no additional text."""
         
         completion = client.chat.completions.create(
-            model=deployment,
+            model=deployment_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json_prompt}
@@ -206,9 +206,9 @@ Return only valid JSON, no additional text."""
     except Exception as e:
         logger.error(f"Error in Critical Care agent: {e}")
         try:
-            client, deployment = get_azure_openai_client()
+            client, deployment_name = get_azure_openai_client()
             completion = client.chat.completions.create(
-                model=deployment,
+                model=deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -260,7 +260,7 @@ Clinical Vignette:
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment = get_azure_openai_client()
+        client, deployment_name = get_azure_openai_client()
         
         # Use JSON mode for structured output
         json_schema = AgentDecision.model_json_schema()
@@ -272,7 +272,7 @@ Please respond with a JSON object matching this schema:
 Return only valid JSON, no additional text."""
         
         completion = client.chat.completions.create(
-            model=deployment,
+            model=deployment_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json_prompt}
@@ -292,9 +292,9 @@ Return only valid JSON, no additional text."""
     except Exception as e:
         logger.error(f"Error in Transplant Surgeon agent: {e}")
         try:
-            client, deployment = get_azure_openai_client()
+            client, deployment_name = get_azure_openai_client()
             completion = client.chat.completions.create(
-                model=deployment,
+                model=deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -376,7 +376,7 @@ Weighted Analysis:
 Provide your final synthesis and prediction."""
 
     try:
-        client, deployment = get_azure_openai_client()
+        client, deployment_name = get_azure_openai_client()
         
         # Use JSON mode for structured output
         json_schema = FinalPrediction.model_json_schema()
@@ -388,7 +388,7 @@ Please respond with a JSON object matching this schema:
 Return only valid JSON, no additional text."""
         
         completion = client.chat.completions.create(
-            model=deployment,
+            model=deployment_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json_prompt}

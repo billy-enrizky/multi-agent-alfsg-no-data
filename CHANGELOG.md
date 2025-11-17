@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-11-16 23:38:16
+
+### Changed
+
+- **Updated Azure OpenAI Authentication**
+  - Switched from Entra ID authentication to API key authentication
+  - Uses `OpenAI` client with `base_url` and `api_key` parameters
+  - Removed dependency on `azure-identity` package
+  - Environment variables: `AZURE_OPENAI_API_KEY`, `ENDPOINT_URL`, `DEPLOYMENT_NAME`
+  - Default endpoint: `https://acf-project.openai.azure.com/openai/v1`
+  - Default deployment: `gpt-4o`
+
 ## [0.4.0] - 2025-11-16 23:30:00
 
 ### Added
@@ -21,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pydantic structured outputs:
     - `AgentDecision`: Individual agent decision (Yes/No) with reasoning
     - `FinalPrediction`: Final committee prediction with confidence score and synthesis
-  - Azure OpenAI integration with Entra ID authentication
+  - Azure OpenAI integration
   - JSON mode for structured outputs (Pydantic models)
   - Input: Reads from `clinical_vignettes.xlsx` with agent-specific vignette columns
   - Output: Saves predictions to `agent_predictions.xlsx`
