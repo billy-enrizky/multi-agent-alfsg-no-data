@@ -4,9 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "azure-identity>=1.25.1",
+    "langchain-core>=1.0.5",
+    "langchain-openai>=1.0.3",
+    "langgraph>=1.0.3",
     "msoffcrypto-tool>=5.4.2",
     "openpyxl>=3.1.5",
     "pandas>=2.3.3",
+    "pydantic>=2.12.4",
     "python-dotenv>=1.2.1",
     "xlrd>=2.0.2",
 ]

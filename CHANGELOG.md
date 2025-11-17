@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-11-16 23:30:00
+
+### Added
+
+- **Multi-Agent AI System using LangGraph**
+  - Implemented complete multi-agent architecture based on README.md Mermaid diagram
+  - Created `multi_agent_system.py` with LangGraph workflow
+  - Three specialist agents:
+    - AI Hepatologist: Analyzes liver function, hepatic encephalopathy, liver-related complications
+    - AI Critical Care Physician: Analyzes ICU parameters, organ support, critical care interventions
+    - AI Transplant Surgeon: Analyzes surgical/MELD parameters, transplant candidacy
+  - Final Synthesis Agent: AI Transplant Leader Committee with weighted voting
+    - Weighting: Critical Care=40%, Surgeon=30%, Hepatologist=30%
+  - Pydantic structured outputs:
+    - `AgentDecision`: Individual agent decision (Yes/No) with reasoning
+    - `FinalPrediction`: Final committee prediction with confidence score and synthesis
+  - Azure OpenAI integration with Entra ID authentication
+  - JSON mode for structured outputs (Pydantic models)
+  - Input: Reads from `clinical_vignettes.xlsx` with agent-specific vignette columns
+  - Output: Saves predictions to `agent_predictions.xlsx`
+  - Architecture matches README.md diagram exactly
+
 ## [0.3.5] - 2025-11-16 23:21:54
 
 ### Changed
