@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2025-11-16 23:21:54
+
+### Changed
+
+- **Removed Target Variable from Vignettes**
+  - Removed `Spont_Survival21` (target variable) from all vignette columns
+  - Target variable should never be passed to agents during prediction
+  - Applied to: `patient_day_vignette`, `hepatologist_vignette`, `transplant_surgeon_vignette`, `critical_care_physician_vignette`
+  - Target variable remains in the dataframe as a separate column for model training/evaluation
+
 ## [0.3.4] - 2025-11-16 23:13:32
 
 ### Added
@@ -19,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - AI Hepatologist: ALT, Arterial_Ammonia, Bilirubin, Creat, F27Q04, Hispanic, INR1, Lymph, Platelet_Cnt, Pre_NAC_IV, Prothrom_Sec, Sex, Venous_Ammonia, WBC, ammonia
     - AI Transplant Surgeon: Bilirubin, Creat, F27Q04, Hemoglobin, Hispanic, INR1, Infection, NA, Platelet_Cnt, Prothrom_Sec, Ratio_PO2_FiO2, Trt_CVVH, Trt_Pressors, Trt_Ventilator
     - AI Critical Care Physician: Arterial_Ammonia, Creat, F27Q04, HCO3, Hemoglobin, INR1, Infection, Lactate, Lymph, NA, PMN, Phosphate, Platelet_Cnt, Ratio_PO2_FiO2, Trt_CVVH, Trt_Pressors, Trt_Ventilator, Venous_Ammonia, WBC, ammonia
-  - All agents see the target outcome (Spont_Survival21)
   - Format: Same human-readable format as comprehensive vignette, but filtered by agent assignment
 
 ## [0.3.3] - 2025-11-16 23:05:07

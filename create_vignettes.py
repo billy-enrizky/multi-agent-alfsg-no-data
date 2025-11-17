@@ -522,10 +522,7 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
     if clinical_parts:
         parts.append("Clinical status: " + "; ".join(clinical_parts) + ".")
     
-    # Target outcome
-    if pd.notna(row.get('Spont_Survival21')):
-        survival = "yes" if row['Spont_Survival21'] == 1.0 else "no"
-        parts.append(f"Spontaneous survival at 21 days: {survival}.")
+    # Note: Spont_Survival21 is the target variable and should NOT be included in vignettes
     
     # Join all parts with newlines
     return "\n".join(parts)
@@ -613,10 +610,7 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     if clinical_parts:
         parts.append("Clinical status: " + "; ".join(clinical_parts) + ".")
     
-    # Target outcome (all agents see this)
-    if pd.notna(row.get('Spont_Survival21')):
-        survival = "yes" if row['Spont_Survival21'] == 1.0 else "no"
-        parts.append(f"Spontaneous survival at 21 days: {survival}.")
+    # Note: Spont_Survival21 is the target variable and should NOT be included in vignettes
     
     # Join all parts with newlines
     return "\n".join(parts)
