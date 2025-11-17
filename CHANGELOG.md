@@ -5,19 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - 2025-11-13 13:58:31
+## [0.3.2] - 2025-11-16 22:50:03
 
 ### Added
 
-- **Multi-Period Trend Analysis**
-  - Added multiple trend columns for each continuous variable in `create_vignettes.py`
-  - For day i, now calculates three trend periods:
-    - `{var}_trend`: Current period (Day i-1 → Day i, 1 day)
-    - `{var}_trend_prev1`: Previous period (Day i-2 → Day i-1, 1 day)
-    - `{var}_trend_prev2`: Longer term (Day i-3 → Day i-1, 2 days)
-  - Enables comprehensive trend analysis showing immediate, recent, and longer-term changes
-  - Example: For day 4, provides trends for Day 3→4, Day 2→3, and Day 1→3
-  - Updated `clinical_vignettes.xlsx` with 57 trend columns (19 variables × 3 trend periods)
+- **Cumulative Trend History**
+  - Added `_trend_history` columns for all continuous variables showing cumulative progression from day 1
+  - For day i, shows all trends from day 1 to day i in sequential format
+  - Format: "day 1 to day 2: trend, then day 2 to day 3: trend, then day 3 to day 4: trend"
+  - Day 1 has no trend history (baseline)
+  - Provides complete clinical narrative of variable progression over time
+  - Example: Day 4 shows trends from day 1→2, day 2→3, and day 3→4 all in one column
 
 ## [0.3.1] - 2025-11-13 10:09:57
 
