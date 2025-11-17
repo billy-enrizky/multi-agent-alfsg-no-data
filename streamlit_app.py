@@ -152,15 +152,6 @@ def main():
                 
                 # Display results
                 st.success("✅ Prediction completed!")
-                
-                # Show actual survival outcome
-                patient_row = df[(df['subject_id'] == selected_patient) & 
-                                (df['day'] == selected_day)].iloc[0]
-                if pd.notna(patient_row.get('Spont_Survival21')):
-                    actual_survival = "Yes" if patient_row['Spont_Survival21'] == 1.0 else "No"
-                    actual_class = "decision-yes" if actual_survival == "Yes" else "decision-no"
-                    st.markdown(f'<p style="font-size: 1.2rem; text-align: center; padding: 1rem; background-color: #f0f2f6; border-radius: 10px;"><strong>Actual 21-Day Survival:</strong> <span class="{actual_class}">{actual_survival}</span></p>', unsafe_allow_html=True)
-                
                 st.markdown("---")
                 
                 # Display vignettes for each agent
@@ -170,24 +161,18 @@ def main():
                 
                 with col1:
                     st.subheader("👨‍⚕️ Hepatologist")
-                    st.markdown('<div class="agent-card">', unsafe_allow_html=True)
                     vignette = patient_row.get('hepatologist_vignette', 'N/A')
-                    st.text_area("", value=vignette, height=300, key="hepatologist_vignette", label_visibility="collapsed")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">{vignette}</div>', unsafe_allow_html=True)
                 
                 with col2:
                     st.subheader("🏥 Critical Care Physician")
-                    st.markdown('<div class="agent-card">', unsafe_allow_html=True)
                     vignette = patient_row.get('critical_care_physician_vignette', 'N/A')
-                    st.text_area("", value=vignette, height=300, key="critical_care_vignette", label_visibility="collapsed")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">{vignette}</div>', unsafe_allow_html=True)
                 
                 with col3:
                     st.subheader("🔪 Transplant Surgeon")
-                    st.markdown('<div class="agent-card">', unsafe_allow_html=True)
                     vignette = patient_row.get('transplant_surgeon_vignette', 'N/A')
-                    st.text_area("", value=vignette, height=300, key="surgeon_vignette", label_visibility="collapsed")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">{vignette}</div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
                 
@@ -272,6 +257,16 @@ def main():
                             st.metric("Hepatologist (30%)", hepatologist.decision, delta=None)
                 else:
                     st.error("Final prediction not available")
+                
+                st.markdown("---")
+                
+                # Show actual survival outcome at the bottom
+                patient_row = df[(df['subject_id'] == selected_patient) & 
+                                (df['day'] == selected_day)].iloc[0]
+                if pd.notna(patient_row.get('Spont_Survival21')):
+                    actual_survival = "Yes" if patient_row['Spont_Survival21'] == 1.0 else "No"
+                    actual_class = "decision-yes" if actual_survival == "Yes" else "decision-no"
+                    st.markdown(f'<p style="font-size: 1.2rem; text-align: center; padding: 1rem; background-color: #f0f2f6; border-radius: 10px;"><strong>Actual 21-Day Survival:</strong> <span class="{actual_class}">{actual_survival}</span></p>', unsafe_allow_html=True)
                 
             except Exception as e:
                 st.error(f"Error processing prediction: {e}")

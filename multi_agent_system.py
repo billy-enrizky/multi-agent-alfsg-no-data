@@ -43,7 +43,7 @@ def get_azure_openai_client():
     """Initialize Azure OpenAI client with API key authentication."""
     endpoint = os.getenv("ENDPOINT_URL")
     model_name = "gpt-5"
-    deployment_name = "gpt-5"
+    deployment_name = os.getenv("DEPLOYMENT_NAME")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
     
     if not endpoint:
@@ -532,7 +532,7 @@ def main():
     
     # Process a sample (first 5 rows for testing)
     logger.info("Processing sample patient-day combinations...")
-    sample_size = min(5, len(df))
+    sample_size = min(1, len(df))
     results = []
     
     for idx, row in df.head(sample_size).iterrows():
