@@ -41,15 +41,18 @@ class AgentState(TypedDict):
 
 def get_azure_openai_client():
     """Initialize Azure OpenAI client with API key authentication."""
-    endpoint = os.getenv("ENDPOINT_URL", "https://acf-project.openai.azure.com/openai/v1")
-    deployment_name = os.getenv("DEPLOYMENT_NAME", "gpt-4o")
+    endpoint = os.getenv("ENDPOINT_URL")
+    model_name = "gpt-5"
+    deployment_name = "gpt-5"
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
     
+    if not endpoint:
+        raise ValueError("ENDPOINT_URL environment variable is required")
     if not api_key:
         raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
     
     client = OpenAI(
-        base_url=endpoint,
+        base_url=f"{endpoint}",
         api_key=api_key
     )
     
@@ -102,8 +105,7 @@ Return only valid JSON, no additional text."""
                 {"role": "user", "content": json_prompt}
             ],
             response_format={"type": "json_object"},
-            temperature=0.7,
-            max_tokens=16384,
+            max_completion_tokens=16384,
         )
         
         response_text = completion.choices[0].message.content
@@ -124,8 +126,7 @@ Return only valid JSON, no additional text."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=16384,
+                max_completion_tokens=16384,
             )
             response_text = completion.choices[0].message.content
             # Parse response manually
@@ -205,8 +206,7 @@ Return only valid JSON, no additional text."""
                 {"role": "user", "content": json_prompt}
             ],
             response_format={"type": "json_object"},
-            temperature=0.7,
-            max_tokens=16384,
+            max_completion_tokens=16384,
         )
         
         response_text = completion.choices[0].message.content
@@ -226,8 +226,7 @@ Return only valid JSON, no additional text."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=16384,
+                max_completion_tokens=16384,
             )
             response_text = completion.choices[0].message.content
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
@@ -306,8 +305,7 @@ Return only valid JSON, no additional text."""
                 {"role": "user", "content": json_prompt}
             ],
             response_format={"type": "json_object"},
-            temperature=0.7,
-            max_tokens=16384,
+            max_completion_tokens=16384,
         )
         
         response_text = completion.choices[0].message.content
@@ -327,8 +325,7 @@ Return only valid JSON, no additional text."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=16384,
+                max_completion_tokens=16384,
             )
             response_text = completion.choices[0].message.content
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
@@ -437,8 +434,7 @@ Return only valid JSON, no additional text."""
                 {"role": "user", "content": json_prompt}
             ],
             response_format={"type": "json_object"},
-            temperature=0.7,
-            max_tokens=16384,
+            max_completion_tokens=16384,
         )
         
         response_text = completion.choices[0].message.content

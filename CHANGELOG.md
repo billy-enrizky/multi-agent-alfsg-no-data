@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2025-11-16 23:55:00
+
+### Changed
+
+- **Updated Deployment Configuration**
+  - Changed default model from `gpt-4o` to `gpt-5`
+  - Removed default endpoint URL - now requires `ENDPOINT_URL` environment variable
+  - Updated `get_azure_openai_client()` to match new deployment pattern
+  - Model name and deployment name both set to `"gpt-5"`
+  - Added validation to ensure `ENDPOINT_URL` is provided
+
 ## [0.4.2] - 2025-11-16 23:50:00
 
 ### Added
@@ -32,9 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Switched from Entra ID authentication to API key authentication
   - Uses `OpenAI` client with `base_url` and `api_key` parameters
   - Removed dependency on `azure-identity` package
-  - Environment variables: `AZURE_OPENAI_API_KEY`, `ENDPOINT_URL`, `DEPLOYMENT_NAME`
-  - Default endpoint: `https://acf-project.openai.azure.com/openai/v1`
-  - Default deployment: `gpt-4o`
+  - Environment variables: `AZURE_OPENAI_API_KEY`, `ENDPOINT_URL`
+  - Model: `gpt-5` (hardcoded, updated in v0.4.3)
 
 ## [0.4.0] - 2025-11-16 23:30:00
 
