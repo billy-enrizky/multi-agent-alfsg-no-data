@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import logging
+import io
 from multi_agent_system import create_multi_agent_graph, process_patient_day
 
 # Configure page
@@ -267,6 +268,46 @@ def main():
                     actual_survival = "Yes" if patient_row['Spont_Survival21'] == 1.0 else "No"
                     actual_class = "decision-yes" if actual_survival == "Yes" else "decision-no"
                     st.markdown(f'<p style="font-size: 1.2rem; text-align: center; padding: 1rem; background-color: #f0f2f6; border-radius: 10px;"><strong>Actual 21-Day Survival:</strong> <span class="{actual_class}">{actual_survival}</span></p>', unsafe_allow_html=True)
+                
+                # Download button
+                st.markdown("---")
+                st.subheader("📥 Download Results")
+                
+                # Create DataFrame with prediction results
+                result_data = {
+                    'subject_id': [int(selected_patient)],
+                    'day': [int(selected_day)],
+                    'final_prediction': [final_pred.prediction if final_pred else None],
+                    'final_confidence': [final_pred.confidence if final_pred else None],
+                    'final_reasoning': [final_pred.reasoning if final_pred else None],
+                    'hepatologist_decision': [hepatologist.decision if hepatologist else None],
+                    'hepatologist_confidence': [hepatologist.confidence if hepatologist else None],
+                    'hepatologist_reasoning': [hepatologist.reasoning if hepatologist else None],
+                    'critical_care_decision': [critical_care.decision if critical_care else None],
+                    'critical_care_confidence': [critical_care.confidence if critical_care else None],
+                    'critical_care_reasoning': [critical_care.reasoning if critical_care else None],
+                    'transplant_surgeon_decision': [transplant_surgeon.decision if transplant_surgeon else None],
+                    'transplant_surgeon_confidence': [transplant_surgeon.confidence if transplant_surgeon else None],
+                    'transplant_surgeon_reasoning': [transplant_surgeon.reasoning if transplant_surgeon else None],
+                    'actual_survival': [patient_row.get('Spont_Survival21', None)]
+                }
+                
+                result_df = pd.DataFrame(result_data)
+                
+                # Create Excel file in memory
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    result_df.to_excel(writer, sheet_name='Predictions', index=False)
+                output.seek(0)
+                
+                # Download button
+                st.download_button(
+                    label="📥 Download Prediction Results (Excel)",
+                    data=output.getvalue(),
+                    file_name=f"prediction_Patient_{int(selected_patient)}_Day_{int(selected_day)}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
                 
             except Exception as e:
                 st.error(f"Error processing prediction: {e}")

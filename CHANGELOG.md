@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2025-11-17 01:24:26
+
+### Added
+
+- **Download Prediction Results Feature**
+  - Added download button to Streamlit app for exporting prediction results
+  - Downloads Excel file with same structure as `agent_predictions.xlsx`
+  - Includes all prediction data:
+    - Subject ID and day
+    - Final prediction, confidence, and reasoning
+    - Individual agent decisions, confidence scores, and reasoning (Hepatologist, Critical Care, Transplant Surgeon)
+    - Actual survival outcome
+  - Dynamic filename: `prediction_Patient_{patient_id}_Day_{day}.xlsx`
+  - File generated in-memory using `BytesIO` and `pd.ExcelWriter`
+  - Full-width download button with clear labeling
+
 ## [0.5.2] - 2025-11-17 01:01:28
 
 ### Changed
