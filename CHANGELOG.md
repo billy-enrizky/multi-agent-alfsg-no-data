@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-11-17 00:20:00
+
+### Added
+
+- **Label Legend Documentation**
+  - Created `vignette_label_legend.xlsx` with three comprehensive documentation sheets:
+    - **categorical label**: Explains how all categorical variables are transformed to text labels
+      - Documents all 8 categorical variables (Sex, Hispanic, Pre_NAC_IV, Infection, Trt_Ventilator, Trt_Pressors, Trt_CVVH, F27Q04)
+      - Shows numeric value → text label mappings
+      - Includes variable descriptions and transformation method
+    - **continuous label**: Explains how all continuous variables are binned to text labels
+      - Documents all 19 continuous variables with their clinical thresholds
+      - Shows value ranges, binned labels, units, and clinical context
+      - Explains binning method based on medical literature
+    - **time trend label**: Explains how rate of change is categorized to trend labels
+      - Documents 9 trend categories based on percent change ranges
+      - Includes descriptions and clinical interpretations
+      - Explains calculation method, context enhancement, and cumulative history
+  - Created `create_label_legend.py` script to generate the documentation file
+  - Provides complete reference for understanding all label transformations in the vignettes
+
+### Changed
+
+- **Streamlit App UI Improvements**
+  - Removed empty text_area boxes, replaced with formatted markdown display
+  - Moved actual 21-day survival label to bottom of results (after all predictions)
+  - Fixed accessibility warnings by adding proper labels to text_area widgets
+
 ## [0.5.0] - 2025-11-17 00:15:27
 
 ### Added
@@ -21,7 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Displays final committee prediction with reasoning and confidence
     - Weighted voting breakdown visualization
     - Color-coded confidence scores (high/medium/low)
-    - Patient information sidebar with actual survival outcome
     - Dataset statistics display
   - Beautiful UI with custom CSS styling, gradient cards, and responsive layout
   - Caching for data loading and graph compilation for performance
