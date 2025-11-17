@@ -1,0 +1,217 @@
+import pandas as pd
+from create_vignettes import CATEGORICAL_MAPPINGS, BINNING_THRESHOLDS
+
+def create_categorical_label_sheet():
+    """Create sheet explaining categorical variable transformations."""
+    rows = []
+    
+    for var_name, mapping in CATEGORICAL_MAPPINGS.items():
+        # Get unique numeric values (excluding float duplicates)
+        unique_values = set()
+        for k, v in mapping.items():
+            if isinstance(k, (int, float)):
+                unique_values.add(int(k))
+        
+        for num_val in sorted(unique_values):
+            # Get the text label (prefer int key, fallback to float)
+            text_label = mapping.get(num_val, mapping.get(float(num_val), 'N/A'))
+            
+            # Add description
+            if var_name == 'F27Q04':
+                description = "West Haven Criteria for Hepatic Encephalopathy"
+            elif var_name == 'Sex':
+                description = "Biological sex"
+            elif var_name == 'Hispanic':
+                description = "Ethnicity indicator"
+            elif var_name == 'Pre_NAC_IV':
+                description = "Prior intravenous N-acetylcysteine administration"
+            elif var_name == 'Infection':
+                description = "Presence of documented or suspected infection"
+            elif var_name == 'Trt_Ventilator':
+                description = "Patient receiving invasive mechanical ventilation"
+            elif var_name == 'Trt_Pressors':
+                description = "Receiving vasopressor support"
+            elif var_name == 'Trt_CVVH':
+                description = "Receiving continuous renal replacement therapy"
+            else:
+                description = ""
+            
+            rows.append({
+                'Variable Name': var_name,
+                'Numeric Value': num_val,
+                'Text Label': text_label,
+                'Description': description,
+                'Transformation Method': 'Direct mapping from numeric code to descriptive text label'
+            })
+    
+    return pd.DataFrame(rows)
+
+def create_continuous_label_sheet():
+    """Create sheet explaining continuous variable binning."""
+    rows = []
+    
+    for var_name, thresholds in BINNING_THRESHOLDS.items():
+        bins = thresholds['bins']
+        labels = thresholds['labels']
+        unit = thresholds.get('unit', '')
+        
+        # Create bin ranges
+        for i in range(len(bins) - 1):
+            bin_start = bins[i]
+            bin_end = bins[i + 1]
+            label = labels[i]
+            
+            # Format range
+            if bin_start == float('-inf') or bin_start == 0:
+                if bin_end == float('inf'):
+                    range_str = f"≥ {bins[0] if bins[0] > 0 else 'all values'}"
+                else:
+                    range_str = f"< {bin_end}"
+            elif bin_end == float('inf'):
+                range_str = f"≥ {bin_start}"
+            else:
+                range_str = f"{bin_start} to < {bin_end}"
+            
+            # Add clinical context
+            if 'Critical' in label:
+                clinical_context = "Requires immediate medical attention"
+            elif 'High' in label or 'Severe' in label:
+                clinical_context = "Clinically significant abnormality"
+            elif 'Elevated' in label:
+                clinical_context = "Mild to moderate abnormality"
+            elif 'Normal' in label:
+                clinical_context = "Within normal clinical range"
+            elif 'Low' in label:
+                clinical_context = "Below normal range"
+            else:
+                clinical_context = "Clinical significance varies"
+            
+            rows.append({
+                'Variable Name': var_name,
+                'Unit': unit,
+                'Value Range': range_str,
+                'Binned Label': label,
+                'Clinical Context': clinical_context,
+                'Binning Method': 'Clinical thresholds based on medical literature and clinical practice guidelines'
+            })
+    
+    return pd.DataFrame(rows)
+
+def create_time_trend_label_sheet():
+    """Create sheet explaining time series trend categorization."""
+    rows = []
+    
+    # Trend categories based on calculate_trend_detailed function
+    trend_categories = [
+        {
+            'Percent Change Range': '< -100%',
+            'Trend Label': 'Rapidly Improving',
+            'Description': 'Very large decrease (>100% reduction), indicating rapid clinical improvement',
+            'Clinical Interpretation': 'Significant positive change, often indicates recovery or effective treatment response'
+        },
+        {
+            'Percent Change Range': '-100% to -50%',
+            'Trend Label': 'Rapidly Decreasing',
+            'Description': 'Large decrease (50-100% reduction), indicating rapid decline in value',
+            'Clinical Interpretation': 'Rapid improvement for variables where lower is better (e.g., lactate, creatinine), or rapid worsening for variables where higher is better (e.g., hemoglobin)'
+        },
+        {
+            'Percent Change Range': '-50% to -20%',
+            'Trend Label': 'Improving',
+            'Description': 'Moderate decrease (20-50% reduction), indicating improvement',
+            'Clinical Interpretation': 'Positive trend, suggests improving clinical status'
+        },
+        {
+            'Percent Change Range': '-20% to -5%',
+            'Trend Label': 'Mildly Decreasing',
+            'Description': 'Small decrease (5-20% reduction), indicating mild improvement',
+            'Clinical Interpretation': 'Gradual positive change, may be within normal variation'
+        },
+        {
+            'Percent Change Range': '-5% to +5%',
+            'Trend Label': 'Stable',
+            'Description': 'Minimal change (<5% change in either direction), indicating stability',
+            'Clinical Interpretation': 'No significant change, values remain relatively constant'
+        },
+        {
+            'Percent Change Range': '+5% to +20%',
+            'Trend Label': 'Mildly Increasing',
+            'Description': 'Small increase (5-20% increase), indicating mild change',
+            'Clinical Interpretation': 'Gradual change, may be within normal variation or early sign of trend'
+        },
+        {
+            'Percent Change Range': '+20% to +50%',
+            'Trend Label': 'Worsening',
+            'Description': 'Moderate increase (20-50% increase), indicating worsening',
+            'Clinical Interpretation': 'Negative trend for most clinical variables, suggests deteriorating clinical status'
+        },
+        {
+            'Percent Change Range': '+50% to +100%',
+            'Trend Label': 'Rapidly Increasing',
+            'Description': 'Large increase (50-100% increase), indicating rapid change',
+            'Clinical Interpretation': 'Significant change, may indicate acute clinical deterioration or response to intervention'
+        },
+        {
+            'Percent Change Range': '> +100%',
+            'Trend Label': 'Rapidly Worsening',
+            'Description': 'Very large increase (>100% increase), indicating dramatic change',
+            'Clinical Interpretation': 'Critical change, often indicates severe clinical deterioration or acute event'
+        }
+    ]
+    
+    df = pd.DataFrame(trend_categories)
+    
+    # Add additional context rows
+    context_rows = [
+        {
+            'Percent Change Range': '---',
+            'Trend Label': 'Calculation Method',
+            'Description': 'Percent change = ((current_value - previous_value) / previous_value) × 100',
+            'Clinical Interpretation': 'Calculated between consecutive days (day N to day N+1)'
+        },
+        {
+            'Percent Change Range': '---',
+            'Trend Label': 'Context Enhancement',
+            'Description': 'Trend labels include bin context: "trend (from previous_bin to current_bin)" or "trend (remains bin)"',
+            'Clinical Interpretation': 'Provides clinical context by showing transitions between clinical severity categories'
+        },
+        {
+            'Percent Change Range': '---',
+            'Trend Label': 'Cumulative History',
+            'Description': 'For day i, shows all trends from day 1 to day i: "day 1 to day 2: trend, then day 2 to day 3: trend, ..."',
+            'Clinical Interpretation': 'Provides complete narrative of variable progression over time, allowing assessment of overall trajectory'
+        },
+        {
+            'Percent Change Range': '---',
+            'Trend Label': 'Day 1 (Baseline)',
+            'Description': 'No trend data available (admission day, no previous day for comparison)',
+            'Clinical Interpretation': 'Baseline values only, trends begin from day 2 onwards'
+        }
+    ]
+    
+    context_df = pd.DataFrame(context_rows)
+    return pd.concat([df, context_df], ignore_index=True)
+
+def main():
+    """Create Excel file with label legend sheets."""
+    print("Creating vignette_label_legend.xlsx...")
+    
+    # Create DataFrames for each sheet
+    categorical_df = create_categorical_label_sheet()
+    continuous_df = create_continuous_label_sheet()
+    trend_df = create_time_trend_label_sheet()
+    
+    # Write to Excel with multiple sheets
+    with pd.ExcelWriter('vignette_label_legend.xlsx', engine='openpyxl') as writer:
+        categorical_df.to_excel(writer, sheet_name='categorical label', index=False)
+        continuous_df.to_excel(writer, sheet_name='continuous label', index=False)
+        trend_df.to_excel(writer, sheet_name='time trend label', index=False)
+    
+    print(f"✓ Created categorical label sheet: {len(categorical_df)} rows")
+    print(f"✓ Created continuous label sheet: {len(continuous_df)} rows")
+    print(f"✓ Created time trend label sheet: {len(trend_df)} rows")
+    print("\nFile saved: vignette_label_legend.xlsx")
+
+if __name__ == '__main__':
+    main()
+
