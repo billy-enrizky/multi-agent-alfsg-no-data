@@ -157,6 +157,22 @@ def calculate_trend(current: float, previous: float, days_diff: int = 1) -> Opti
     else:
         return "Stable"
 
+# Agent to Variable Mapping (from README.md)
+AGENT_VARIABLES = {
+    'AI_Hepatologist': {
+        'continuous': ['ALT', 'Arterial_Ammonia', 'Bilirubin', 'Creat', 'INR1', 'Lymph', 'Platelet_Cnt', 'Prothrom_Sec', 'Venous_Ammonia', 'WBC', 'ammonia'],
+        'categorical': ['Sex', 'Hispanic', 'Pre_NAC_IV', 'F27Q04']
+    },
+    'AI_Transplant_Surgeon': {
+        'continuous': ['Bilirubin', 'Creat', 'Hemoglobin', 'INR1', 'NA', 'Platelet_Cnt', 'Prothrom_Sec', 'Ratio_PO2_FiO2'],
+        'categorical': ['Hispanic', 'F27Q04', 'Infection', 'Trt_CVVH', 'Trt_Pressors', 'Trt_Ventilator']
+    },
+    'AI_Critical_Care_Physician': {
+        'continuous': ['Arterial_Ammonia', 'Creat', 'HCO3', 'Hemoglobin', 'INR1', 'Lactate', 'Lymph', 'NA', 'PMN', 'Phosphate', 'Platelet_Cnt', 'Ratio_PO2_FiO2', 'Venous_Ammonia', 'WBC', 'ammonia'],
+        'categorical': ['F27Q04', 'Infection', 'Trt_CVVH', 'Trt_Pressors', 'Trt_Ventilator']
+    }
+}
+
 # Categorical variable mappings
 CATEGORICAL_MAPPINGS = {
     'Sex': {
@@ -417,6 +433,12 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Creating comprehensive clinical vignettes...")
     vignettes_df['patient_day_vignette'] = vignettes_df.apply(create_comprehensive_vignette, axis=1)
     
+    # Create agent-specific vignettes
+    logger.info("Creating agent-specific vignettes...")
+    vignettes_df['hepatologist_vignette'] = vignettes_df.apply(lambda row: create_agent_vignette(row, 'AI_Hepatologist'), axis=1)
+    vignettes_df['transplant_surgeon_vignette'] = vignettes_df.apply(lambda row: create_agent_vignette(row, 'AI_Transplant_Surgeon'), axis=1)
+    vignettes_df['critical_care_physician_vignette'] = vignettes_df.apply(lambda row: create_agent_vignette(row, 'AI_Critical_Care_Physician'), axis=1)
+    
     return vignettes_df
 
 def create_comprehensive_vignette(row: pd.Series) -> str:
@@ -501,6 +523,97 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
         parts.append("Clinical status: " + "; ".join(clinical_parts) + ".")
     
     # Target outcome
+    if pd.notna(row.get('Spont_Survival21')):
+        survival = "yes" if row['Spont_Survival21'] == 1.0 else "no"
+        parts.append(f"Spontaneous survival at 21 days: {survival}.")
+    
+    # Join all parts with newlines
+    return "\n".join(parts)
+
+def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
+    """Create a clinical vignette text for a specific agent with only their assigned variables."""
+    if agent_name not in AGENT_VARIABLES:
+        return ""
+    
+    parts = []
+    agent_vars = AGENT_VARIABLES[agent_name]
+    
+    # Patient identification
+    parts.append(f"Patient {int(row['subject_id'])} on Day {int(row['day'])}")
+    
+    # Demographics section (only if agent has these variables)
+    demo_parts = []
+    if 'Sex' in agent_vars['categorical'] and pd.notna(row.get('Sex_text')):
+        demo_parts.append(f"is {row['Sex_text'].lower()}")
+    if 'Hispanic' in agent_vars['categorical'] and pd.notna(row.get('Hispanic_text')):
+        demo_parts.append(f"is {row['Hispanic_text'].lower()}")
+    if 'Pre_NAC_IV' in agent_vars['categorical'] and pd.notna(row.get('Pre_NAC_IV_text')):
+        if 'received' in row['Pre_NAC_IV_text'].lower() or 'yes' in row['Pre_NAC_IV_text'].lower():
+            demo_parts.append("has received prior IV N-acetylcysteine")
+        else:
+            demo_parts.append("has not received prior IV N-acetylcysteine")
+    
+    if demo_parts:
+        parts.append("Patient " + ", ".join(demo_parts) + ".")
+    
+    # Laboratory values section (only agent's assigned variables)
+    lab_parts = []
+    for var in agent_vars['continuous']:
+        var_name = var.replace('_', ' ')
+        binned = row.get(f"{var}_binned")
+        
+        if pd.notna(binned):
+            lab_parts.append(f"{var_name} is {binned.lower()}")
+    
+    if lab_parts:
+        parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
+    
+    # Trend history section (only agent's assigned variables)
+    trend_parts = []
+    for var in agent_vars['continuous']:
+        var_name = var.replace('_', ' ')
+        trend_history = row.get(f"{var}_trend_history")
+        
+        if pd.notna(trend_history):
+            trend_parts.append(f"{var_name} trend shows {trend_history.lower()}")
+    
+    if trend_parts:
+        parts.append("Trend analysis: " + "; ".join(trend_parts) + ".")
+    
+    # Clinical status and treatments (only agent's assigned variables)
+    clinical_parts = []
+    
+    if 'Infection' in agent_vars['categorical'] and pd.notna(row.get('Infection_text')):
+        if 'yes' in row['Infection_text'].lower() or 'documented' in row['Infection_text'].lower():
+            clinical_parts.append("has documented infection")
+        else:
+            clinical_parts.append("has no documented infection")
+    
+    if 'Trt_Ventilator' in agent_vars['categorical'] and pd.notna(row.get('Trt_Ventilator_text')):
+        if 'yes' in row['Trt_Ventilator_text'].lower() or 'receiving' in row['Trt_Ventilator_text'].lower():
+            clinical_parts.append("is receiving mechanical ventilation")
+        else:
+            clinical_parts.append("is not on mechanical ventilation")
+    
+    if 'Trt_Pressors' in agent_vars['categorical'] and pd.notna(row.get('Trt_Pressors_text')):
+        if 'yes' in row['Trt_Pressors_text'].lower() or 'receiving' in row['Trt_Pressors_text'].lower():
+            clinical_parts.append("is receiving vasopressor support")
+        else:
+            clinical_parts.append("is not receiving vasopressor support")
+    
+    if 'Trt_CVVH' in agent_vars['categorical'] and pd.notna(row.get('Trt_CVVH_text')):
+        if 'yes' in row['Trt_CVVH_text'].lower() or 'receiving' in row['Trt_CVVH_text'].lower():
+            clinical_parts.append("is receiving continuous renal replacement therapy (CVVH)")
+        else:
+            clinical_parts.append("is not receiving CVVH")
+    
+    if 'F27Q04' in agent_vars['categorical'] and pd.notna(row.get('F27Q04_text')):
+        clinical_parts.append(f"has {row['F27Q04_text'].lower()}")
+    
+    if clinical_parts:
+        parts.append("Clinical status: " + "; ".join(clinical_parts) + ".")
+    
+    # Target outcome (all agents see this)
     if pd.notna(row.get('Spont_Survival21')):
         survival = "yes" if row['Spont_Survival21'] == 1.0 else "no"
         parts.append(f"Spontaneous survival at 21 days: {survival}.")
