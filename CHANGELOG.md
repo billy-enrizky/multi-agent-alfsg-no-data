@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2025-11-17 01:01:28
+
+### Changed
+
+- **Simplified Label Legend Documentation**
+  - **categorical label sheet**: Removed `Transformation Method` column
+    - Now contains: Variable Name, Numeric Value, Text Label, Description
+  - **continuous label sheet**: Removed `Clinical Context` and `Binning Method` columns
+    - Now contains: Variable Name, Unit, Value Range, Binned Label
+  - **time trend label sheet**: 
+    - Removed `Clinical Interpretation` column
+    - Removed all "indicating" statements from `Description` column
+    - Descriptions now contain only factual information (e.g., "Very large decrease (>100% reduction)" instead of "Very large decrease (>100% reduction), indicating rapid clinical improvement")
+    - Now contains: Percent Change Range, Trend Label, Description
+  - Streamlined documentation focuses on essential mapping information
+
 ## [0.5.1] - 2025-11-17 00:20:00
 
 ### Added
@@ -14,15 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **categorical label**: Explains how all categorical variables are transformed to text labels
       - Documents all 8 categorical variables (Sex, Hispanic, Pre_NAC_IV, Infection, Trt_Ventilator, Trt_Pressors, Trt_CVVH, F27Q04)
       - Shows numeric value → text label mappings
-      - Includes variable descriptions and transformation method
+      - Includes variable descriptions
     - **continuous label**: Explains how all continuous variables are binned to text labels
       - Documents all 19 continuous variables with their clinical thresholds
-      - Shows value ranges, binned labels, units, and clinical context
-      - Explains binning method based on medical literature
+      - Shows value ranges, binned labels, and units
     - **time trend label**: Explains how rate of change is categorized to trend labels
       - Documents 9 trend categories based on percent change ranges
-      - Includes descriptions and clinical interpretations
-      - Explains calculation method, context enhancement, and cumulative history
+      - Includes descriptions and calculation method
+      - Explains context enhancement and cumulative history
   - Created `create_label_legend.py` script to generate the documentation file
   - Provides complete reference for understanding all label transformations in the vignettes
 
