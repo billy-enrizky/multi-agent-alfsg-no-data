@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2025-11-16 23:05:07
+
+### Added
+
+- **Comprehensive Clinical Vignette Column**
+  - Added `patient_day_vignette` column that concatenates all text information into a single human-readable clinical narrative
+  - Uses natural language with verbs like "is", "has", "shows" for readability
+  - Sections separated by newline characters (`\n`)
+  - Includes: patient demographics, laboratory values (binned), trend analysis, clinical status, and outcome
+  - No numeric values - only descriptive text labels
+  - One comprehensive vignette per patient-day combination
+  - Format: Multi-line text narrative suitable for LLM input
+
 ## [0.3.2] - 2025-11-16 22:50:03
 
 ### Added
