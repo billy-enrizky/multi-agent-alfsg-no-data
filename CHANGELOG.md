@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2025-11-16 23:50:00
+
+### Added
+
+- **Confidence Scores for Individual Agents**
+  - Added `confidence` field to `AgentDecision` Pydantic model (0.0 to 1.0)
+  - Each agent (Hepatologist, Critical Care Physician, Transplant Surgeon) now provides confidence score
+  - Confidence extracted from LLM structured output or parsed from text fallback
+  - Output file includes: `hepatologist_confidence`, `critical_care_confidence`, `transplant_surgeon_confidence`
+
+### Changed
+
+- **Simplified FinalPrediction Model**
+  - Removed redundant fields from `FinalPrediction`: `hepatologist_decision`, `critical_care_decision`, `transplant_surgeon_decision`
+  - Individual agent decisions are already available in state and output file as separate columns
+  - `FinalPrediction` now only contains: `prediction`, `confidence`, `reasoning`
+  - Updated `process_patient_day()` to return dictionary with all outputs (final + individual agents)
+  - Output file structure: Final prediction columns + individual agent columns (decision, confidence, reasoning for each)
+
 ## [0.4.1] - 2025-11-16 23:38:16
 
 ### Changed
@@ -31,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Final Synthesis Agent: AI Transplant Leader Committee with weighted voting
     - Weighting: Critical Care=40%, Surgeon=30%, Hepatologist=30%
   - Pydantic structured outputs:
-    - `AgentDecision`: Individual agent decision (Yes/No) with reasoning
+    - `AgentDecision`: Individual agent decision (Yes/No) with confidence score and reasoning
     - `FinalPrediction`: Final committee prediction with confidence score and synthesis
   - Azure OpenAI integration
   - JSON mode for structured outputs (Pydantic models)

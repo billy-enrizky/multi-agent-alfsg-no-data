@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class AgentDecision(BaseModel):
     """Individual agent decision output."""
     decision: Literal["Yes", "No"] = Field(description="Prediction: Will patient survive 21 days? Yes or No")
+    confidence: float = Field(description="Confidence score between 0.0 and 1.0", ge=0.0, le=1.0)
     reasoning: str = Field(description="Detailed clinical reasoning for the decision")
 
 class FinalPrediction(BaseModel):
@@ -24,9 +25,6 @@ class FinalPrediction(BaseModel):
     prediction: Literal["Yes", "No"] = Field(description="Final prediction: Will patient survive 21 days? Yes or No")
     confidence: float = Field(description="Confidence score between 0.0 and 1.0", ge=0.0, le=1.0)
     reasoning: str = Field(description="Synthesis of all agent inputs with weighted analysis")
-    hepatologist_decision: str = Field(description="Hepatologist decision and reasoning")
-    critical_care_decision: str = Field(description="Critical Care Physician decision and reasoning")
-    transplant_surgeon_decision: str = Field(description="Transplant Surgeon decision and reasoning")
 
 # State definition for LangGraph
 class AgentState(TypedDict):
@@ -76,7 +74,7 @@ Consider:
 - Patient demographics and prior treatments
 - Trends in liver function markers
 
-Provide a clear decision (Yes or No) and detailed clinical reasoning."""
+Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
     prompt = f"""{system_prompt}
 
@@ -132,14 +130,29 @@ Return only valid JSON, no additional text."""
             response_text = completion.choices[0].message.content
             # Parse response manually
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+            # Extract confidence if mentioned, otherwise default to 0.7
+            confidence_val = 0.7
+            if "confidence" in response_text.lower():
+                import re
+                conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                if conf_match:
+                    try:
+                        confidence_val = float(conf_match.group(1))
+                        if confidence_val > 1.0:
+                            confidence_val = confidence_val / 100.0
+                        confidence_val = max(0.0, min(1.0, confidence_val))
+                    except:
+                        pass
             state['hepatologist_output'] = AgentDecision(
                 decision=decision_val,
+                confidence=confidence_val,
                 reasoning=response_text
             )
         except Exception as e2:
             logger.error(f"Fallback also failed: {e2}")
             state['hepatologist_output'] = AgentDecision(
                 decision="No",
+                confidence=0.0,
                 reasoning=f"Error processing: {str(e2)}"
             )
     
@@ -164,7 +177,7 @@ Consider:
 - White blood cell counts and inflammatory markers
 - Trends in critical care parameters
 
-Provide a clear decision (Yes or No) and detailed clinical reasoning."""
+Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
     prompt = f"""{system_prompt}
 
@@ -218,14 +231,29 @@ Return only valid JSON, no additional text."""
             )
             response_text = completion.choices[0].message.content
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+            # Extract confidence if mentioned, otherwise default to 0.7
+            confidence_val = 0.7
+            if "confidence" in response_text.lower():
+                import re
+                conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                if conf_match:
+                    try:
+                        confidence_val = float(conf_match.group(1))
+                        if confidence_val > 1.0:
+                            confidence_val = confidence_val / 100.0
+                        confidence_val = max(0.0, min(1.0, confidence_val))
+                    except:
+                        pass
             state['critical_care_output'] = AgentDecision(
                 decision=decision_val,
+                confidence=confidence_val,
                 reasoning=response_text
             )
         except Exception as e2:
             logger.error(f"Fallback also failed: {e2}")
             state['critical_care_output'] = AgentDecision(
                 decision="No",
+                confidence=0.0,
                 reasoning=f"Error processing: {str(e2)}"
             )
     
@@ -250,7 +278,7 @@ Consider:
 - Infection status
 - Overall surgical risk and transplant urgency
 
-Provide a clear decision (Yes or No) and detailed clinical reasoning."""
+Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
     prompt = f"""{system_prompt}
 
@@ -304,14 +332,29 @@ Return only valid JSON, no additional text."""
             )
             response_text = completion.choices[0].message.content
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+            # Extract confidence if mentioned, otherwise default to 0.7
+            confidence_val = 0.7
+            if "confidence" in response_text.lower():
+                import re
+                conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                if conf_match:
+                    try:
+                        confidence_val = float(conf_match.group(1))
+                        if confidence_val > 1.0:
+                            confidence_val = confidence_val / 100.0
+                        confidence_val = max(0.0, min(1.0, confidence_val))
+                    except:
+                        pass
             state['transplant_surgeon_output'] = AgentDecision(
                 decision=decision_val,
+                confidence=confidence_val,
                 reasoning=response_text
             )
         except Exception as e2:
             logger.error(f"Fallback also failed: {e2}")
             state['transplant_surgeon_output'] = AgentDecision(
                 decision="No",
+                confidence=0.0,
                 reasoning=f"Error processing: {str(e2)}"
             )
     
@@ -405,9 +448,6 @@ Return only valid JSON, no additional text."""
         # Override with calculated values
         prediction.prediction = weighted_decision
         prediction.confidence = confidence
-        prediction.hepatologist_decision = f"{hepatologist.decision}: {hepatologist.reasoning}" if hepatologist else "N/A"
-        prediction.critical_care_decision = f"{critical_care.decision}: {critical_care.reasoning}" if critical_care else "N/A"
-        prediction.transplant_surgeon_decision = f"{transplant_surgeon.decision}: {transplant_surgeon.reasoning}" if transplant_surgeon else "N/A"
         
         state['final_prediction'] = prediction
         logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
@@ -418,10 +458,7 @@ Return only valid JSON, no additional text."""
         state['final_prediction'] = FinalPrediction(
             prediction=weighted_decision,
             confidence=confidence,
-            reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. Error in LLM synthesis: {str(e)}",
-            hepatologist_decision=f"{hepatologist.decision}: {hepatologist.reasoning}" if hepatologist else "N/A",
-            critical_care_decision=f"{critical_care.decision}: {critical_care.reasoning}" if critical_care else "N/A",
-            transplant_surgeon_decision=f"{transplant_surgeon.decision}: {transplant_surgeon.reasoning}" if transplant_surgeon else "N/A"
+            reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. Error in LLM synthesis: {str(e)}"
         )
     
     return state
@@ -452,8 +489,15 @@ def create_multi_agent_graph():
     
     return workflow.compile()
 
-def process_patient_day(row: pd.Series, graph) -> FinalPrediction:
-    """Process a single patient-day through the multi-agent system."""
+def process_patient_day(row: pd.Series, graph) -> dict:
+    """Process a single patient-day through the multi-agent system.
+    
+    Returns a dictionary with:
+    - final_prediction: FinalPrediction object
+    - hepatologist_output: AgentDecision object
+    - critical_care_output: AgentDecision object
+    - transplant_surgeon_output: AgentDecision object
+    """
     state = {
         "subject_id": int(row['subject_id']),
         "day": int(row['day']),
@@ -469,7 +513,12 @@ def process_patient_day(row: pd.Series, graph) -> FinalPrediction:
     # Run the graph
     final_state = graph.invoke(state)
     
-    return final_state['final_prediction']
+    return {
+        'final_prediction': final_state['final_prediction'],
+        'hepatologist_output': final_state['hepatologist_output'],
+        'critical_care_output': final_state['critical_care_output'],
+        'transplant_surgeon_output': final_state['transplant_surgeon_output']
+    }
 
 def main():
     """Main function to run the multi-agent system on clinical vignettes."""
@@ -493,24 +542,47 @@ def main():
     for idx, row in df.head(sample_size).iterrows():
         logger.info(f"\nProcessing Subject {int(row['subject_id'])}, Day {int(row['day'])}")
         try:
-            prediction = process_patient_day(row, graph)
+            outputs = process_patient_day(row, graph)
+            final_pred = outputs['final_prediction']
+            hepatologist = outputs['hepatologist_output']
+            critical_care = outputs['critical_care_output']
+            transplant_surgeon = outputs['transplant_surgeon_output']
+            
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
-                'prediction': prediction.prediction,
-                'confidence': prediction.confidence,
-                'reasoning': prediction.reasoning,
+                'final_prediction': final_pred.prediction if final_pred else None,
+                'final_confidence': final_pred.confidence if final_pred else None,
+                'final_reasoning': final_pred.reasoning if final_pred else None,
+                'hepatologist_decision': hepatologist.decision if hepatologist else None,
+                'hepatologist_confidence': hepatologist.confidence if hepatologist else None,
+                'hepatologist_reasoning': hepatologist.reasoning if hepatologist else None,
+                'critical_care_decision': critical_care.decision if critical_care else None,
+                'critical_care_confidence': critical_care.confidence if critical_care else None,
+                'critical_care_reasoning': critical_care.reasoning if critical_care else None,
+                'transplant_surgeon_decision': transplant_surgeon.decision if transplant_surgeon else None,
+                'transplant_surgeon_confidence': transplant_surgeon.confidence if transplant_surgeon else None,
+                'transplant_surgeon_reasoning': transplant_surgeon.reasoning if transplant_surgeon else None,
                 'actual_survival': row.get('Spont_Survival21', None)
             })
-            logger.info(f"Prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
+            logger.info(f"Final Prediction: {final_pred.prediction if final_pred else 'N/A'} (confidence: {final_pred.confidence if final_pred else 0.0:.2f})")
         except Exception as e:
             logger.error(f"Error processing row {idx}: {e}")
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
-                'prediction': 'Error',
-                'confidence': 0.0,
-                'reasoning': str(e),
+                'final_prediction': 'Error',
+                'final_confidence': 0.0,
+                'final_reasoning': str(e),
+                'hepatologist_decision': None,
+                'hepatologist_confidence': None,
+                'hepatologist_reasoning': None,
+                'critical_care_decision': None,
+                'critical_care_confidence': None,
+                'critical_care_reasoning': None,
+                'transplant_surgeon_decision': None,
+                'transplant_surgeon_confidence': None,
+                'transplant_surgeon_reasoning': None,
                 'actual_survival': row.get('Spont_Survival21', None)
             })
     
