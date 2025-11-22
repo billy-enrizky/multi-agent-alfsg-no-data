@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.18] - 2025-11-17 09:00:00
+
+### Changed
+
+- **Updated Venous_Ammonia Binning Thresholds**
+  - Revised venous ammonia binning to use hepatic encephalopathy and intracranial hypertension risk thresholds based on [Bernal et al. (2007)](https://pubmed.ncbi.nlm.nih.gov/17685471/)
+  - < 100 μmol/L: "Lower Risk (Associated with lower risk of cerebral complications; favors continued medical management and assessment for spontaneous recovery)"
+  - 100 – 150 μmol/L: "High Risk (Predictive of severe Hepatic Encephalopathy [Grade III/IV]; indicates deterioration requiring intensive monitoring)" (inclusive range)
+  - > 150 μmol/L: "Critical Risk (High probability of intracranial hypertension and cerebral edema; triggers immediate neuroprotective protocols and urgent transplant listing assessment)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 100, 150, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all three risk categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for Venous_Ammonia
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "100 – 150") and "> 150" for Venous_Ammonia
+
 ## [0.5.17] - 2025-11-17 08:30:00
 
 ### Changed
