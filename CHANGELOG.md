@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.22] - 2025-11-17 11:00:00
+
+### Changed
+
+- **Updated PMN (Polymorphonuclear Neutrophils) Binning Thresholds**
+  - Revised PMN percentage binning to use blood differential test normal ranges based on [UCSF Health - Blood Differential Test](https://www.ucsfhealth.org/medical-tests/blood-differential-test)
+  - < 40%: "Neutropenia / Immune Paralysis" (exclusive threshold)
+  - 40% – 80%: "Normal Physiologic Range" (inclusive range)
+  - > 80%: "Hyper-inflammatory / SIRS" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 40, 80, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle PMN with proper inclusive/exclusive boundaries
+  - Added reference field to `BINNING_THRESHOLDS` for PMN
+  - Updated range formatting in `create_label_legend.py` to display proper ranges (e.g., "< 40", "40 – 80", "> 80") for PMN
+
 ## [0.5.21] - 2025-11-17 10:30:00
 
 ### Changed

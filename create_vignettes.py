@@ -111,9 +111,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'PMN': {
-        'bins': [0, 40, 60, 80, float('inf')],
-        'labels': ['Low', 'Normal', 'Elevated', 'High'],
-        'unit': '%'
+        'bins': [0, 40, 80, float('inf')],
+        'labels': ['Neutropenia / Immune Paralysis', 'Normal Physiologic Range', 'Hyper-inflammatory / SIRS'],
+        'unit': '%',
+        'reference': 'https://www.ucsfhealth.org/medical-tests/blood-differential-test'
     },
     'Lymph': {
         'bins': [0, 15, 30, 45, float('inf')],
@@ -334,6 +335,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 13.5 – 100 seconds: Abnormal / Monitor Trajectory (Indicates coagulopathy and liver injury requiring dynamic trend analysis)
         elif value >= 100.0:
             return labels[2]  # >= 100 seconds: Critical / Transplant Consideration (Meets King's College Criteria threshold for poor prognosis in acetaminophen toxicity)
+        else:
+            return None
+    
+    # Special handling for PMN with blood differential test ranges
+    if var_name == 'PMN':
+        if value < 40.0:
+            return labels[0]  # < 40%: Neutropenia / Immune Paralysis
+        elif 40.0 <= value <= 80.0:
+            return labels[1]  # 40% – 80%: Normal Physiologic Range
+        elif value > 80.0:
+            return labels[2]  # > 80%: Hyper-inflammatory / SIRS
         else:
             return None
     
