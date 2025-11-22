@@ -87,9 +87,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://onlinelibrary.wiley.com/doi/10.1002/hep.510290309'
     },
     'Venous_Ammonia': {
-        'bins': [0, 50, 100, 200, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High', 'Critical (Severe Hyperammonemia)'],
-        'unit': 'μmol/L'
+        'bins': [0, 100, 150, float('inf')],
+        'labels': ['Lower Risk (Associated with lower risk of cerebral complications; favors continued medical management and assessment for spontaneous recovery)', 'High Risk (Predictive of severe Hepatic Encephalopathy [Grade III/IV]; indicates deterioration requiring intensive monitoring)', 'Critical Risk (High probability of intracranial hypertension and cerebral edema; triggers immediate neuroprotective protocols and urgent transplant listing assessment)'],
+        'unit': 'μmol/L',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/17685471/'
     },
     'ammonia': {
         'bins': [0, 50, 100, 200, float('inf')],
@@ -284,6 +285,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 150 – 200 μmol/L: High Risk (Significant risk of developing intracranial hypertension; indicates need for aggressive monitoring)
         elif value > 200.0:
             return labels[2]  # > 200 μmol/L: Critical Risk (Strongly associated with cerebral herniation; immediate neuroprotective strategies and transplant assessment required)
+        else:
+            return None
+    
+    # Special handling for Venous_Ammonia with hepatic encephalopathy and intracranial hypertension risk thresholds
+    if var_name == 'Venous_Ammonia':
+        if value < 100.0:
+            return labels[0]  # < 100 μmol/L: Lower Risk (Associated with lower risk of cerebral complications; favors continued medical management and assessment for spontaneous recovery)
+        elif 100.0 <= value < 150.0:
+            return labels[1]  # 100 – 150 μmol/L: High Risk (Predictive of severe Hepatic Encephalopathy [Grade III/IV]; indicates deterioration requiring intensive monitoring)
+        elif value > 150.0:
+            return labels[2]  # > 150 μmol/L: Critical Risk (High probability of intracranial hypertension and cerebral edema; triggers immediate neuroprotective protocols and urgent transplant listing assessment)
         else:
             return None
     
