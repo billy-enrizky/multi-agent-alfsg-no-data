@@ -45,9 +45,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://files.asprtracie.hhs.gov/documents/aspr-tracie-sofa-score-fact-sheet.pdf'
     },
     'Bilirubin': {
-        'bins': [0, 1.2, 2.0, 5.0, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High (Jaundice)', 'Critical (Severe Hyperbilirubinemia)'],
-        'unit': 'mg/dL'
+        'bins': [0, 1.2, 2.0, 6.0, 12.0, float('inf')],
+        'labels': ['0 (Normal function)', '1 (Mild dysfunction)', '2 (Moderate dysfunction)', '3 (Severe dysfunction)', '4 (Critical liver failure)'],
+        'unit': 'mg/dL',
+        'reference': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9837980/'
     },
     'ALT': {
         'bins': [0, 40, 100, 300, float('inf')],
@@ -194,6 +195,21 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[3]  # 100 – 149 k/uL: 1 (Mild Thrombocytopenia)
         elif value >= 150.0:
             return labels[4]  # >= 150 k/uL: 0 (No Coagulopathy)
+        else:
+            return None
+    
+    # Special handling for Bilirubin with SOFA score thresholds
+    if var_name == 'Bilirubin':
+        if value < 1.2:
+            return labels[0]  # < 1.2 mg/dL: 0 (Normal function)
+        elif 1.2 <= value < 2.0:
+            return labels[1]  # 1.2 – 1.9 mg/dL: 1 (Mild dysfunction)
+        elif 2.0 <= value < 6.0:
+            return labels[2]  # 2.0 – 5.9 mg/dL: 2 (Moderate dysfunction)
+        elif 6.0 <= value < 12.0:
+            return labels[3]  # 6.0 – 11.9 mg/dL: 3 (Severe dysfunction)
+        elif value >= 12.0:
+            return labels[4]  # >= 12.0 mg/dL: 4 (Critical liver failure)
         else:
             return None
     

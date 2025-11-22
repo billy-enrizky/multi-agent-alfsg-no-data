@@ -85,6 +85,8 @@ def create_continuous_label_sheet():
                     range_str = f"≥ {int(bin_start)}"
                 elif var_name == 'Platelet_Cnt' and bin_start == 150.0:
                     range_str = f">= {int(bin_start)}"
+                elif var_name == 'Bilirubin' and bin_start == 12.0:
+                    range_str = f">= {bin_start:.1f}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
@@ -106,6 +108,15 @@ def create_continuous_label_sheet():
                         range_str = f"< {int(bin_end)}"
                     else:
                         range_str = f"{int(bin_start)} – {int(upper_bound)}"
+                elif var_name == 'Bilirubin':
+                    # Format upper bound as one decimal less than bin_end for inclusive ranges
+                    upper_bound = bin_end - 0.1
+                    if bin_start == 0:
+                        range_str = f"< {bin_end:.1f}"
+                    elif upper_bound.is_integer():
+                        range_str = f"{bin_start:.1f} – {int(upper_bound)}"
+                    else:
+                        range_str = f"{bin_start:.1f} – {upper_bound:.1f}"
                 else:
                     # Standard inclusive range notation (e.g., "2.0 – 3.0")
                     range_str = f"{bin_start} – {bin_end}"
