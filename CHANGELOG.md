@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.23] - 2025-11-17 11:30:00
+
+### Changed
+
+- **Updated Lymph (Lymphocytes) Binning Thresholds**
+  - Revised lymphocyte percentage binning to use neutrophil-lymphocyte ratio prognostic thresholds for acetaminophen overdose based on [Craig et al. (2014)](https://pubmed.ncbi.nlm.nih.gov/25045842/)
+  - < 5.6%: "High Risk / Severe Lymphopenia" (exclusive threshold)
+  - 5.6% – 17.8%: "Intermediate Risk / Warning" (inclusive range)
+  - > 17.8%: "Low Risk / Normal" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 5.6, 17.8, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle Lymph with proper inclusive/exclusive boundaries
+  - Added reference field to `BINNING_THRESHOLDS` for Lymph
+  - Updated range formatting in `create_label_legend.py` to display proper ranges (e.g., "< 5.6", "5.6 – 17.8", "> 17.8") for Lymph with decimal precision
+
 ## [0.5.22] - 2025-11-17 11:00:00
 
 ### Changed
