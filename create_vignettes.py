@@ -75,9 +75,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/12829902/'
     },
     'PH': {
-        'bins': [0, 7.2, 7.35, 7.45, float('inf')],
-        'labels': ['Critical (Severe Acidosis)', 'Low (Acidosis)', 'Normal', 'High (Alkalosis)'],
-        'unit': ''
+        'bins': [0, 7.30, float('inf')],
+        'labels': ['Urgent Transplant Candidate (High likelihood of mortality without liver transplantation; meets the single KCC criterion for listing regardless of encephalopathy grade)', 'Monitor / Assess Other Criteria (Survival is possible with supportive care unless the patient meets the alternative criteria triad: INR > 6.5, Creatinine > 3.4 mg/dL, and Grade III/IV Encephalopathy)'],
+        'unit': '',
+        'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK441917/'
     },
     'Arterial_Ammonia': {
         'bins': [0, 50, 100, 200, float('inf')],
@@ -262,6 +263,15 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 2.5 – 5.0 mg/dL: Indeterminate / Moderate Risk
         elif value > 5.0:
             return labels[2]  # > 5.0 mg/dL: High Risk of Mortality / Urgent Transplant Candidate
+        else:
+            return None
+    
+    # Special handling for PH with King's College Criteria threshold
+    if var_name == 'PH':
+        if value < 7.30:
+            return labels[0]  # < 7.30: Urgent Transplant Candidate (High likelihood of mortality without liver transplantation; meets the single KCC criterion for listing regardless of encephalopathy grade)
+        elif value >= 7.30:
+            return labels[1]  # >= 7.30: Monitor / Assess Other Criteria (Survival is possible with supportive care unless the patient meets the alternative criteria triad)
         else:
             return None
     

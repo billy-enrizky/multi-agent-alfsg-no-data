@@ -69,6 +69,8 @@ def create_continuous_label_sheet():
                     # Special handling for Creatinine first bin (≤ 3.4)
                     if var_name == 'Creat' and bin_end == 3.4:
                         range_str = f"≤ {bin_end}"
+                    elif var_name == 'PH' and bin_end == 7.30:
+                        range_str = f"< {bin_end:.2f}"
                     else:
                         range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
@@ -95,6 +97,8 @@ def create_continuous_label_sheet():
                     range_str = f"> {int(bin_start)}"
                 elif var_name == 'Phosphate' and bin_start == 5.0:
                     range_str = f"> {bin_start:.1f}"
+                elif var_name == 'PH' and bin_start == 7.30:
+                    range_str = f">= {bin_start:.2f}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
