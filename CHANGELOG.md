@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.10] - 2025-11-17 05:00:00
+
+### Changed
+
+- **Updated Platelet_Cnt (Platelet Count) Binning Thresholds**
+  - Revised platelet count binning to use SOFA score coagulation criteria based on [ASPR TRACIE SOFA Score Fact Sheet](https://files.asprtracie.hhs.gov/documents/aspr-tracie-sofa-score-fact-sheet.pdf)
+  - < 20 k/uL: "4 (Extreme Thrombocytopenia / Risk of Spontaneous Bleeding)"
+  - 20 – 49 k/uL: "3 (Severe Thrombocytopenia)" (inclusive range)
+  - 50 – 99 k/uL: "2 (Moderate Thrombocytopenia)" (inclusive range)
+  - 100 – 149 k/uL: "1 (Mild Thrombocytopenia)" (inclusive range)
+  - >= 150 k/uL: "0 (No Coagulopathy)" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 20, 50, 100, 150, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all five SOFA score categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for Platelet_Cnt
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "20 – 49", "50 – 99", "100 – 149") and ">= 150" for Platelet_Cnt
+
 ## [0.5.9] - 2025-11-17 04:30:00
 
 ### Changed
