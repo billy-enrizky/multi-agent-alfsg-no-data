@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.12] - 2025-11-17 06:00:00
+
+### Changed
+
+- **Updated ALT (Alanine Aminotransferase) Binning Thresholds**
+  - Revised ALT binning to use LiverTox severity grading system based on [NCBI Bookshelf - LiverTox](https://www.ncbi.nlm.nih.gov/books/NBK548241/)
+  - < 120 U/L: "Grade 1 (Mild)"
+  - 120 – 200 U/L: "Grade 2 (Moderate)" (inclusive range)
+  - 200 – 800 U/L: "Grade 3 (Severe)" (inclusive range)
+  - > 800 U/L: "Grade 4 (Life-Threatening / Acute Liver Failure)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 120, 200, 800, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all four severity grades with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for ALT
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "120 – 200", "200 – 800") and "> 800" for ALT
+
 ## [0.5.11] - 2025-11-17 05:30:00
 
 ### Changed

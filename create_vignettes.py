@@ -51,9 +51,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9837980/'
     },
     'ALT': {
-        'bins': [0, 40, 100, 300, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High', 'Critical (Severe Hepatocellular Injury)'],
-        'unit': 'U/L'
+        'bins': [0, 120, 200, 800, float('inf')],
+        'labels': ['Grade 1 (Mild)', 'Grade 2 (Moderate)', 'Grade 3 (Severe)', 'Grade 4 (Life-Threatening / Acute Liver Failure)'],
+        'unit': 'U/L',
+        'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK548241/'
     },
     'NA': {
         'bins': [0, 130, 135, 145, float('inf')],
@@ -210,6 +211,19 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[3]  # 6.0 – 11.9 mg/dL: 3 (Severe dysfunction)
         elif value >= 12.0:
             return labels[4]  # >= 12.0 mg/dL: 4 (Critical liver failure)
+        else:
+            return None
+    
+    # Special handling for ALT with LiverTox severity grading
+    if var_name == 'ALT':
+        if value < 120.0:
+            return labels[0]  # < 120 U/L: Grade 1 (Mild)
+        elif 120.0 <= value < 200.0:
+            return labels[1]  # 120 – 200 U/L: Grade 2 (Moderate)
+        elif 200.0 <= value < 800.0:
+            return labels[2]  # 200 – 800 U/L: Grade 3 (Severe)
+        elif value > 800.0:
+            return labels[3]  # > 800 U/L: Grade 4 (Life-Threatening / Acute Liver Failure)
         else:
             return None
     
