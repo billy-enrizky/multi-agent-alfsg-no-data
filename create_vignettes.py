@@ -218,16 +218,16 @@ CATEGORICAL_MAPPINGS = {
         1.0: 'Receiving CVVH'
     },
     'F27Q04': {  # Coma Grade (West Haven Criteria for Hepatic Encephalopathy)
-        0: 'No Hepatic Encephalopathy (Grade 0)',
-        1: 'Mild Hepatic Encephalopathy (Grade 1)',
-        2: 'Moderate Hepatic Encephalopathy (Grade 2)',
-        3: 'Severe Hepatic Encephalopathy (Grade 3)',
-        4: 'Coma (Grade 4)',
-        0.0: 'No Hepatic Encephalopathy (Grade 0)',
-        1.0: 'Mild Hepatic Encephalopathy (Grade 1)',
-        2.0: 'Moderate Hepatic Encephalopathy (Grade 2)',
-        3.0: 'Severe Hepatic Encephalopathy (Grade 3)',
-        4.0: 'Coma (Grade 4)'
+        0: 'Normal/Minimal: No detectable changes in personality or behavior; minimal changes in coordination (Grade 0 of Hepatic Encephalopathy)',
+        1: 'Trivial: Shortened attention span, euphoria or anxiety, impaired calculation (Grade 1 of Hepatic Encephalopathy)',
+        2: 'Lethargy: Disoriented to time, apathy, personality change, inappropriate behavior. (Grade 2 of Hepatic Encephalopathy)',
+        3: 'Somnolence : Responsive to stimuli but confused, gross disorientation. (Grade 3 of Hepatic Encephalopathy)',
+        4: 'Coma: Unresponsive to voice; may or may not respond to painful stimuli. (Grade 4 of Hepatic Encephalopathy)',
+        0.0: 'Normal/Minimal: No detectable changes in personality or behavior; minimal changes in coordination (Grade 0 of Hepatic Encephalopathy)',
+        1.0: 'Trivial: Shortened attention span, euphoria or anxiety, impaired calculation (Grade 1 of Hepatic Encephalopathy)',
+        2.0: 'Lethargy: Disoriented to time, apathy, personality change, inappropriate behavior. (Grade 2 of Hepatic Encephalopathy)',
+        3.0: 'Somnolence : Responsive to stimuli but confused, gross disorientation. (Grade 3 of Hepatic Encephalopathy)',
+        4.0: 'Coma: Unresponsive to voice; may or may not respond to painful stimuli. (Grade 4 of Hepatic Encephalopathy)'
     }
 }
 
