@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.16] - 2025-11-17 08:00:00
+
+### Changed
+
+- **Updated PH (pH) Binning Thresholds**
+  - Revised pH binning to use King's College Criteria based on [StatPearls - Acetaminophen Toxicity](https://www.ncbi.nlm.nih.gov/books/NBK441917/)
+  - < 7.30: "Urgent Transplant Candidate (High likelihood of mortality without liver transplantation; meets the single KCC criterion for listing regardless of encephalopathy grade)"
+  - >= 7.30: "Monitor / Assess Other Criteria (Survival is possible with supportive care unless the patient meets the alternative criteria triad: INR > 6.5, Creatinine > 3.4 mg/dL, and Grade III/IV Encephalopathy)" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 7.30, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle the 7.30 threshold for PH
+  - Added reference field to `BINNING_THRESHOLDS` for PH
+  - Updated range formatting in `create_label_legend.py` to display "< 7.30" and ">= 7.30" for PH
+
 ## [0.5.15] - 2025-11-17 07:30:00
 
 ### Changed
