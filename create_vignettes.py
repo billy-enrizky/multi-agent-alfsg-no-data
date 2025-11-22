@@ -69,9 +69,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK482146/'
     },
     'Phosphate': {
-        'bins': [0, 2.5, 3.5, 4.5, float('inf')],
-        'labels': ['Low (Hypophosphatemia)', 'Normal', 'Elevated', 'High (Hyperphosphatemia)'],
-        'unit': 'mg/dL'
+        'bins': [0, 2.5, 5.0, float('inf')],
+        'labels': ['High Likelihood of Spontaneous Recovery', 'Indeterminate / Moderate Risk', 'High Risk of Mortality / Urgent Transplant Candidate'],
+        'unit': 'mg/dL',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/12829902/'
     },
     'PH': {
         'bins': [0, 7.2, 7.35, 7.45, float('inf')],
@@ -250,6 +251,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 10 – 22 mEq/L: Mild to Moderate Metabolic Acidosis
         elif value > 22.0:
             return labels[2]  # > 22 mEq/L: Normal / Compensated
+        else:
+            return None
+    
+    # Special handling for Phosphate with acute liver failure prognostic thresholds
+    if var_name == 'Phosphate':
+        if value < 2.5:
+            return labels[0]  # < 2.5 mg/dL: High Likelihood of Spontaneous Recovery
+        elif 2.5 <= value < 5.0:
+            return labels[1]  # 2.5 – 5.0 mg/dL: Indeterminate / Moderate Risk
+        elif value > 5.0:
+            return labels[2]  # > 5.0 mg/dL: High Risk of Mortality / Urgent Transplant Candidate
         else:
             return None
     

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.15] - 2025-11-17 07:30:00
+
+### Changed
+
+- **Updated Phosphate Binning Thresholds**
+  - Revised phosphate binning to use acute liver failure prognostic thresholds based on [Baquerizo et al. (2003)](https://pubmed.ncbi.nlm.nih.gov/12829902/)
+  - < 2.5 mg/dL: "High Likelihood of Spontaneous Recovery" (74% recovery rate at 1 week)
+  - 2.5 – 5.0 mg/dL: "Indeterminate / Moderate Risk" (45% recovery rate at 1 week) (inclusive range)
+  - > 5.0 mg/dL: "High Risk of Mortality / Urgent Transplant Candidate" (0% recovery rate at 1 week) (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 2.5, 5.0, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all three prognostic categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for Phosphate
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "2.5 – 5.0") and "> 5.0" for Phosphate
+
 ## [0.5.14] - 2025-11-17 07:00:00
 
 ### Changed
