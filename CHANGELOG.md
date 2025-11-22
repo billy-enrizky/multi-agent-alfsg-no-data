@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.24] - 2025-11-17 12:00:00
+
+### Added
+
+- **NextStep Sheet in Label Legend Documentation**
+  - Added new "NextStep" sheet to `vignette_label_legend.xlsx` in `create_label_legend.py`
+  - Documents next steps and notes for data processing and evaluation
+  - Contains 8 entries covering:
+    - Value Only, Label Only (with note: "Sensitive for labelling"), Value + Label Only
+    - Agent pick it up correctly at which day?
+    - Evaluation at each day
+    - Need to put references for only labelling
+    - Need to add data from previous days not just the trend
+    - in Day i, if Day i-1 does not have data, use trend from day i-2, i-3,.., (the last available)
+  - Created `create_next_step_sheet()` function to generate the sheet
+  - Sheet includes "Next Step" and "Notes" columns
+
 ## [0.5.23] - 2025-11-17 11:30:00
 
 ### Changed
