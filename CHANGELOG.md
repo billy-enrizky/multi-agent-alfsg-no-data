@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2025-11-17 02:00:00
+
+### Changed
+
+- **Updated F27Q04 Categorical Labels**
+  - Updated F27Q04 (Hepatic Encephalopathy Grade) labels with detailed clinical descriptions
+  - Grade 0: "Normal/Minimal: No detectable changes in personality or behavior; minimal changes in coordination (Grade 0 of Hepatic Encephalopathy)"
+  - Grade 1: "Trivial: Shortened attention span, euphoria or anxiety, impaired calculation (Grade 1 of Hepatic Encephalopathy)"
+  - Grade 2: "Lethargy: Disoriented to time, apathy, personality change, inappropriate behavior. (Grade 2 of Hepatic Encephalopathy)"
+  - Grade 3: "Somnolence : Responsive to stimuli but confused, gross disorientation. (Grade 3 of Hepatic Encephalopathy)"
+  - Grade 4: "Coma: Unresponsive to voice; may or may not respond to painful stimuli. (Grade 4 of Hepatic Encephalopathy)"
+  - Updated `CATEGORICAL_MAPPINGS` in `create_vignettes.py`
+  - Label legend documentation will automatically reflect these changes when regenerated
+
 ## [0.5.3] - 2025-11-17 01:24:26
 
 ### Added
