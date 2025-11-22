@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Laboratory values now display both the numeric value with unit and the binned label
   - Format: "Variable name is value unit (binned label)" (e.g., "Lactate is 2.5 mmol/L (Intermediate Risk (Requires Trend Monitoring))")
   - If unit is not available, format: "Variable name is value (binned label)"
-  - All continuous values are rounded to 2 decimal places for consistent formatting
+  - **All continuous values are rounded to 2 decimal places at storage time** (when stored in vignette dictionary) and at display time for consistent formatting throughout
+  - Binning calculations use original precision for accuracy, then values are rounded for storage and display
   - Falls back to label-only format if value is missing
   - Applies to both comprehensive vignettes and agent-specific vignettes
   - Provides complete clinical context with both quantitative and qualitative information

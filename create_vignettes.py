@@ -610,9 +610,11 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
                 if day_col in df.columns:
                     value = row[day_col]
                     if not pd.isna(value):
+                        # Use original value for accurate binning, then round for storage
                         binned = bin_continuous_value(value, var)
+                        value_rounded = round(float(value), 2)
                         vignette[f"{var}_binned"] = binned
-                        vignette[f"{var}_value"] = value
+                        vignette[f"{var}_value"] = value_rounded
                     else:
                         vignette[f"{var}_binned"] = None
                         vignette[f"{var}_value"] = None
