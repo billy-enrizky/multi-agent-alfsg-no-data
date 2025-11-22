@@ -15,9 +15,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/11867109/'
     },
     'Creat': {
-        'bins': [0, 1.2, 1.6, 2.5, float('inf')],
-        'labels': ['Normal', 'High (Meets Stage 1 AKI criteria)', 'Severely High (Stage 2 AKI)', 'Critical (Stage 3 AKI)'],
-        'unit': 'mg/dL'
+        'bins': [0, 3.4, float('inf')],
+        'labels': ['Lower Risk (Does not meet the specific renal transplant criterion)', 'High Risk (Meets King\'s College Criteria component for urgent transplant consideration)'],
+        'unit': 'mg/dL',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'INR1': {
         'bins': [0, 1.2, 1.8, 3.0, float('inf')],
@@ -126,6 +127,15 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 2.0 – 3.0 mmol/L: Intermediate Risk (Requires Trend Monitoring)
         elif value > 3.0:
             return labels[2]  # > 3.0 mmol/L: Urgent Transplant Candidate (High Risk)
+        else:
+            return None
+    
+    # Special handling for Creatinine with King's College Criteria threshold
+    if var_name == 'Creat':
+        if value <= 3.4:
+            return labels[0]  # ≤ 3.4 mg/dL: Lower Risk (Does not meet the specific renal transplant criterion)
+        elif value > 3.4:
+            return labels[1]  # > 3.4 mg/dL: High Risk (Meets King's College Criteria component for urgent transplant consideration)
         else:
             return None
     

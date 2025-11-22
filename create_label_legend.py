@@ -66,10 +66,16 @@ def create_continuous_label_sheet():
                 if bin_end == float('inf'):
                     range_str = f"≥ {bins[0] if bins[0] > 0 else 'all values'}"
                 else:
-                    range_str = f"< {bin_end}"
+                    # Special handling for Creatinine first bin (≤ 3.4)
+                    if var_name == 'Creat' and bin_end == 3.4:
+                        range_str = f"≤ {bin_end}"
+                    else:
+                        range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
-                # For last bin, use > instead of ≥ for lactate
+                # For last bin, use > instead of ≥ for specific variables
                 if var_name == 'Lactate' and bin_start == 3.0:
+                    range_str = f"> {bin_start}"
+                elif var_name == 'Creat' and bin_start == 3.4:
                     range_str = f"> {bin_start}"
                 else:
                     range_str = f"≥ {bin_start}"
