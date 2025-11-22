@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2025-11-17 03:00:00
+
+### Changed
+
+- **Updated Creatinine (Creat) Binning Thresholds**
+  - Revised creatinine binning to use King's College Criteria based on [O'Grady et al. (1989)](https://pubmed.ncbi.nlm.nih.gov/2490426/)
+  - ≤ 3.4 mg/dL: "Lower Risk (Does not meet the specific renal transplant criterion)"
+  - > 3.4 mg/dL: "High Risk (Meets King's College Criteria component for urgent transplant consideration)"
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 3.4, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle the 3.4 mg/dL threshold for Creatinine
+  - Added reference field to `BINNING_THRESHOLDS` for Creatinine
+  - Updated range formatting in `create_label_legend.py` to display "≤ 3.4" and "> 3.4" for Creatinine
+
 ## [0.5.5] - 2025-11-17 02:30:00
 
 ### Changed
