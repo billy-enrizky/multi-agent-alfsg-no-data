@@ -27,9 +27,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'Hemoglobin': {
-        'bins': [0, 10.0, 12.0, 15.0, float('inf')],
-        'labels': ['Critical (Severe Anemia)', 'Low (Moderate Anemia)', 'Normal', 'High'],
-        'unit': 'g/dL'
+        'bins': [0, 7.0, 8.0, float('inf')],
+        'labels': ['Urgent Intervention (Restrictive Threshold)', 'Conditional/Pre-Operative Alert', 'Hemodynamically Adequate'],
+        'unit': 'g/dL',
+        'reference': 'https://jamanetwork.com/journals/jama/article-abstract/2569055'
     },
     'WBC': {
         'bins': [0, 4.0, 10.0, 15.0, float('inf')],
@@ -148,6 +149,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 1.5 – 6.5: Acute Liver Failure / Monitor (Standard medical management)
         elif value > 6.5:
             return labels[2]  # > 6.5: High Risk / Transplant Candidate (Criteria met if used in isolation with other markers*)
+        else:
+            return None
+    
+    # Special handling for Hemoglobin with restrictive transfusion thresholds
+    if var_name == 'Hemoglobin':
+        if value < 7.0:
+            return labels[0]  # < 7 g/dL: Urgent Intervention (Restrictive Threshold)
+        elif 7.0 <= value <= 8.0:
+            return labels[1]  # 7 – 8 g/dL: Conditional/Pre-Operative Alert
+        elif value > 8.0:
+            return labels[2]  # > 8 g/dL: Hemodynamically Adequate
         else:
             return None
     

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2025-11-17 04:00:00
+
+### Changed
+
+- **Updated Hemoglobin Binning Thresholds**
+  - Revised hemoglobin binning to use restrictive transfusion thresholds based on [JAMA article](https://jamanetwork.com/journals/jama/article-abstract/2569055)
+  - < 7 g/dL: "Urgent Intervention (Restrictive Threshold)"
+  - 7 – 8 g/dL: "Conditional/Pre-Operative Alert" (inclusive range)
+  - > 8 g/dL: "Hemodynamically Adequate" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 7.0, 8.0, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle inclusive middle range and exclusive upper bound for Hemoglobin
+  - Added reference field to `BINNING_THRESHOLDS` for Hemoglobin
+  - Updated range formatting in `create_label_legend.py` to display "< 7", "7 – 8", and "> 8" for Hemoglobin
+
 ## [0.5.7] - 2025-11-17 03:30:00
 
 ### Changed
