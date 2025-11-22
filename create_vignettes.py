@@ -539,14 +539,14 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     else:
         trend = "Stable"
     
-    # Format values with unit if available
+    # Format values with unit if available (rounded to 2 decimal places)
     if unit:
-        previous_str = f"{previous} {unit}"
-        current_str = f"{current} {unit}"
+        previous_str = f"{round(previous, 2)} {unit}"
+        current_str = f"{round(current, 2)} {unit}"
         absolute_change_str = f"{absolute_change:+.2f} {unit}"
     else:
-        previous_str = str(previous)
-        current_str = str(current)
+        previous_str = str(round(previous, 2))
+        current_str = str(round(current, 2))
         absolute_change_str = f"{absolute_change:+.2f}"
     
     # Format percentage change
@@ -735,10 +735,11 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
             if pd.notna(value):
                 # Get unit from BINNING_THRESHOLDS
                 unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+                value_rounded = round(float(value), 2)
                 if unit:
-                    lab_parts.append(f"{var_name} is {value} {unit} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()})")
                 else:
-                    lab_parts.append(f"{var_name} is {value} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()})")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
     
@@ -832,10 +833,11 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
             if pd.notna(value):
                 # Get unit from BINNING_THRESHOLDS
                 unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+                value_rounded = round(float(value), 2)
                 if unit:
-                    lab_parts.append(f"{var_name} is {value} {unit} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()})")
                 else:
-                    lab_parts.append(f"{var_name} is {value} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()})")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
     
