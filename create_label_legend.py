@@ -89,6 +89,10 @@ def create_continuous_label_sheet():
                     range_str = f">= {bin_start:.1f}"
                 elif var_name == 'ALT' and bin_start == 800.0:
                     range_str = f"> {int(bin_start)}"
+                elif var_name == 'NA' and bin_start == 155.0:
+                    range_str = f">= {int(bin_start)}"
+                elif var_name == 'HCO3' and bin_start == 22.0:
+                    range_str = f"> {int(bin_start)}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
@@ -120,6 +124,20 @@ def create_continuous_label_sheet():
                     else:
                         range_str = f"{bin_start:.1f} – {upper_bound:.1f}"
                 elif var_name == 'ALT':
+                    # Format upper bound as one less than bin_end for inclusive ranges (whole numbers)
+                    upper_bound = bin_end - 1
+                    if bin_start == 0:
+                        range_str = f"< {int(bin_end)}"
+                    else:
+                        range_str = f"{int(bin_start)} – {int(upper_bound)}"
+                elif var_name == 'NA':
+                    # Format upper bound as one less than bin_end for inclusive ranges (whole numbers)
+                    upper_bound = bin_end - 1
+                    if bin_start == 0:
+                        range_str = f"< {int(bin_end)}"
+                    else:
+                        range_str = f"{int(bin_start)} – {int(upper_bound)}"
+                elif var_name == 'HCO3':
                     # Format upper bound as one less than bin_end for inclusive ranges (whole numbers)
                     upper_bound = bin_end - 1
                     if bin_start == 0:
