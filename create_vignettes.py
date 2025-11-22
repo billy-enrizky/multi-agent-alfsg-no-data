@@ -99,9 +99,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/17685471/'
     },
     'Ratio_PO2_FiO2': {
-        'bins': [0, 200, 300, 400, float('inf')],
-        'labels': ['Critical (Severe ARDS)', 'Low (ARDS)', 'Moderate (ALI)', 'Normal'],
-        'unit': ''
+        'bins': [0, 100, 200, 300, float('inf')],
+        'labels': ['Severe ARDS (Critical instability; high risk of hypoxia-induced cerebral edema)', 'Moderate ARDS (Significant respiratory compromise; potential contraindication for immediate transport/surgery)', 'Mild ARDS (Early sign of deterioration; warning for AI monitoring)', 'No ARDS (Physiologically stable respiratory status)'],
+        'unit': 'mmHg',
+        'reference': 'https://jamanetwork.com/journals/jama/article-abstract/1160659'
     },
     'Prothrom_Sec': {
         'bins': [0, 12, 15, 18, float('inf')],
@@ -308,6 +309,19 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 100 – 200 μmol/L: High Risk of Intracranial Hypertension (ICH) & Severe Encephalopathy
         elif value > 200.0:
             return labels[2]  # > 200 μmol/L: Critical Risk of Cerebral Herniation
+        else:
+            return None
+    
+    # Special handling for Ratio_PO2_FiO2 with ARDS classification thresholds
+    if var_name == 'Ratio_PO2_FiO2':
+        if value <= 100.0:
+            return labels[0]  # ≤ 100 mmHg: Severe ARDS (Critical instability; high risk of hypoxia-induced cerebral edema)
+        elif 100.0 < value <= 200.0:
+            return labels[1]  # 100 < x ≤ 200 mmHg: Moderate ARDS (Significant respiratory compromise; potential contraindication for immediate transport/surgery)
+        elif 200.0 < value <= 300.0:
+            return labels[2]  # 200 < x ≤ 300 mmHg: Mild ARDS (Early sign of deterioration; warning for AI monitoring)
+        elif value > 300.0:
+            return labels[3]  # > 300 mmHg: No ARDS (Physiologically stable respiratory status)
         else:
             return None
     
