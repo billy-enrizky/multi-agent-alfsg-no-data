@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.25] - 2025-11-17 12:30:00
+
+### Changed
+
+- **Enhanced Clinical Vignettes to Include Both Value and Label**
+  - Updated `create_comprehensive_vignette()` and `create_agent_vignette()` functions in `create_vignettes.py`
+  - Laboratory values now display both the numeric value with unit and the binned label
+  - Format: "Variable name is value unit (binned label)" (e.g., "Lactate is 2.5 mmol/L (Intermediate Risk (Requires Trend Monitoring))")
+  - If unit is not available, format: "Variable name is value (binned label)"
+  - Falls back to label-only format if value is missing
+  - Applies to both comprehensive vignettes and agent-specific vignettes
+  - Provides complete clinical context with both quantitative and qualitative information
+
 ## [0.5.24] - 2025-11-17 12:00:00
 
 ### Added

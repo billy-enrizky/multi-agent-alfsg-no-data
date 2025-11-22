@@ -715,9 +715,18 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
     for var in continuous_vars:
         var_name = var.replace('_', ' ')
         binned = row.get(f"{var}_binned")
+        value = row.get(f"{var}_value")
         
         if pd.notna(binned):
-            lab_parts.append(f"{var_name} is {binned.lower()}")
+            if pd.notna(value):
+                # Get unit from BINNING_THRESHOLDS
+                unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+                if unit:
+                    lab_parts.append(f"{var_name} is {value} {unit} ({binned.lower()})")
+                else:
+                    lab_parts.append(f"{var_name} is {value} ({binned.lower()})")
+            else:
+                lab_parts.append(f"{var_name} is {binned.lower()}")
     
     if lab_parts:
         parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
@@ -803,9 +812,18 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     for var in agent_vars['continuous']:
         var_name = var.replace('_', ' ')
         binned = row.get(f"{var}_binned")
+        value = row.get(f"{var}_value")
         
         if pd.notna(binned):
-            lab_parts.append(f"{var_name} is {binned.lower()}")
+            if pd.notna(value):
+                # Get unit from BINNING_THRESHOLDS
+                unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+                if unit:
+                    lab_parts.append(f"{var_name} is {value} {unit} ({binned.lower()})")
+                else:
+                    lab_parts.append(f"{var_name} is {value} ({binned.lower()})")
+            else:
+                lab_parts.append(f"{var_name} is {binned.lower()}")
     
     if lab_parts:
         parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
