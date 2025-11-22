@@ -353,6 +353,45 @@ def create_time_trend_label_sheet():
     context_df = pd.DataFrame(context_rows)
     return pd.concat([df, context_df], ignore_index=True)
 
+def create_next_step_sheet():
+    """Create sheet with next steps and notes for data processing and evaluation."""
+    rows = [
+        {
+            'Next Step': 'Value Only',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'Label Only',
+            'Notes': 'Sensitive for labelling'
+        },
+        {
+            'Next Step': 'Value + Label Only',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'Agent pick it up correctly at which day?',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'Evaluation at each day',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'Need to put references for only labelling',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'Need to add data from previous days not just the trend',
+            'Notes': ''
+        },
+        {
+            'Next Step': 'in Day i, if Day i-1 does not have data, use trend from day i-2, i-3,.., (the last available)',
+            'Notes': ''
+        }
+    ]
+    
+    return pd.DataFrame(rows)
+
 def main():
     """Create Excel file with label legend sheets."""
     print("Creating vignette_label_legend.xlsx...")
@@ -361,16 +400,19 @@ def main():
     categorical_df = create_categorical_label_sheet()
     continuous_df = create_continuous_label_sheet()
     trend_df = create_time_trend_label_sheet()
+    nextstep_df = create_next_step_sheet()
     
     # Write to Excel with multiple sheets
     with pd.ExcelWriter('vignette_label_legend.xlsx', engine='openpyxl') as writer:
         categorical_df.to_excel(writer, sheet_name='categorical label', index=False)
         continuous_df.to_excel(writer, sheet_name='continuous label', index=False)
         trend_df.to_excel(writer, sheet_name='time trend label', index=False)
+        nextstep_df.to_excel(writer, sheet_name='NextStep', index=False)
     
     print(f"✓ Created categorical label sheet: {len(categorical_df)} rows")
     print(f"✓ Created continuous label sheet: {len(continuous_df)} rows")
     print(f"✓ Created time trend label sheet: {len(trend_df)} rows")
+    print(f"✓ Created NextStep sheet: {len(nextstep_df)} rows")
     print("\nFile saved: vignette_label_legend.xlsx")
 
 if __name__ == '__main__':
