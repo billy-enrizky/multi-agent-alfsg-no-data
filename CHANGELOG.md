@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.14] - 2025-11-17 07:00:00
+
+### Changed
+
+- **Updated HCO3 (Bicarbonate) Binning Thresholds**
+  - Revised bicarbonate binning to use metabolic acidosis classification based on [StatPearls - Metabolic Acidosis](https://www.ncbi.nlm.nih.gov/books/NBK482146/)
+  - < 10 mEq/L: "Severe Metabolic Acidosis"
+  - 10 – 22 mEq/L: "Mild to Moderate Metabolic Acidosis" (Indicates physiological deterioration and lactate accumulation) (inclusive range)
+  - > 22 mEq/L: "Normal / Compensated" (Indicates physiological stability) (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 10, 22, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all three categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for HCO3
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "10 – 22") and "> 22" for HCO3
+
+## [0.5.13] - 2025-11-17 06:30:00
+
+### Changed
+
+- **Updated NA (Sodium) Binning Thresholds**
+  - Revised sodium binning to use neuroprotective thresholds based on [Skytthe et al. (2020)](https://pmc.ncbi.nlm.nih.gov/articles/PMC7432735/)
+  - < 135 mEq/L: "Hyponatremia / High Risk" (Significant risk factor for worsening cerebral edema and herniation; requires immediate correction)
+  - 135 – 145 mEq/L: "Sub-therapeutic / Monitor" (Normal physiologic range, but potentially insufficient for neuroprotection; consider administration of hypertonic saline if ICP concerns arise) (inclusive range)
+  - 145 – 155 mEq/L: "Therapeutic Target / Neuroprotective" (Recommended goal range for patients with high-grade encephalopathy to reduce intracranial pressure and prevent cerebral edema) (inclusive range)
+  - >= 155 mEq/L: "Hypernatremia / Monitor" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 135, 145, 155, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all four categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for NA
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "135 – 145", "145 – 155") and ">= 155" for NA
+
 ## [0.5.12] - 2025-11-17 06:00:00
 
 ### Changed

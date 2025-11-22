@@ -57,14 +57,16 @@ BINNING_THRESHOLDS = {
         'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK548241/'
     },
     'NA': {
-        'bins': [0, 130, 135, 145, float('inf')],
-        'labels': ['Critical (Severe Hyponatremia)', 'Low (Hyponatremia)', 'Normal', 'High (Hypernatremia)'],
-        'unit': 'mEq/L'
+        'bins': [0, 135, 145, 155, float('inf')],
+        'labels': ['Hyponatremia / High Risk', 'Sub-therapeutic / Monitor', 'Therapeutic Target / Neuroprotective', 'Hypernatremia / Monitor'],
+        'unit': 'mEq/L',
+        'reference': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7432735/'
     },
     'HCO3': {
-        'bins': [0, 18, 22, 26, float('inf')],
-        'labels': ['Critical (Severe Acidosis)', 'Low (Acidosis)', 'Normal', 'High (Alkalosis)'],
-        'unit': 'mEq/L'
+        'bins': [0, 10, 22, float('inf')],
+        'labels': ['Severe Metabolic Acidosis', 'Mild to Moderate Metabolic Acidosis', 'Normal / Compensated'],
+        'unit': 'mEq/L',
+        'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK482146/'
     },
     'Phosphate': {
         'bins': [0, 2.5, 3.5, 4.5, float('inf')],
@@ -224,6 +226,30 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[2]  # 200 – 800 U/L: Grade 3 (Severe)
         elif value > 800.0:
             return labels[3]  # > 800 U/L: Grade 4 (Life-Threatening / Acute Liver Failure)
+        else:
+            return None
+    
+    # Special handling for NA (Sodium) with neuroprotective thresholds
+    if var_name == 'NA':
+        if value < 135.0:
+            return labels[0]  # < 135 mEq/L: Hyponatremia / High Risk
+        elif 135.0 <= value < 145.0:
+            return labels[1]  # 135 – 145 mEq/L: Sub-therapeutic / Monitor
+        elif 145.0 <= value < 155.0:
+            return labels[2]  # 145 – 155 mEq/L: Therapeutic Target / Neuroprotective
+        elif value >= 155.0:
+            return labels[3]  # >= 155 mEq/L: Hypernatremia / Monitor
+        else:
+            return None
+    
+    # Special handling for HCO3 (Bicarbonate) with metabolic acidosis thresholds
+    if var_name == 'HCO3':
+        if value < 10.0:
+            return labels[0]  # < 10 mEq/L: Severe Metabolic Acidosis
+        elif 10.0 <= value < 22.0:
+            return labels[1]  # 10 – 22 mEq/L: Mild to Moderate Metabolic Acidosis
+        elif value > 22.0:
+            return labels[2]  # > 22 mEq/L: Normal / Compensated
         else:
             return None
     
