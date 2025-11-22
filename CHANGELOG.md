@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2025-11-17 02:30:00
+
+### Changed
+
+- **Updated Lactate Binning Thresholds**
+  - Revised lactate binning to use transplant candidacy risk-based categories based on [Bernal et al. (2002)](https://pubmed.ncbi.nlm.nih.gov/11867109/)
+  - < 2.0 mmol/L: "Likely Spontaneous Recovery (Low Risk)"
+  - 2.0 – 3.0 mmol/L: "Intermediate Risk (Requires Trend Monitoring)" (inclusive range)
+  - > 3.0 mmol/L (Post-Fluid Resuscitation): "Urgent Transplant Candidate (High Risk)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 2.0, 3.0, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle inclusive middle range and exclusive upper bound for Lactate
+  - Added reference field to `BINNING_THRESHOLDS` for Lactate
+
+- **Enhanced Label Legend Documentation**
+  - Added `Reference` column to continuous label sheet in `create_label_legend.py`
+  - Added PubMed reference for Lactate: https://pubmed.ncbi.nlm.nih.gov/11867109/
+  - Updated range formatting to display inclusive ranges (e.g., "2.0 – 3.0" instead of "2.0 to < 3.0")
+  - Changed last bin display from "≥ 3.0" to "> 3.0" for Lactate to match specification
+
 ## [0.5.4] - 2025-11-17 02:00:00
 
 ### Changed

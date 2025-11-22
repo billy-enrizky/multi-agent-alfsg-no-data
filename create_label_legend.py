@@ -53,6 +53,7 @@ def create_continuous_label_sheet():
         bins = thresholds['bins']
         labels = thresholds['labels']
         unit = thresholds.get('unit', '')
+        reference = thresholds.get('reference', '')
         
         # Create bin ranges
         for i in range(len(bins) - 1):
@@ -60,16 +61,21 @@ def create_continuous_label_sheet():
             bin_end = bins[i + 1]
             label = labels[i]
             
-            # Format range
+            # Format range with inclusive/exclusive notation
             if bin_start == float('-inf') or bin_start == 0:
                 if bin_end == float('inf'):
                     range_str = f"≥ {bins[0] if bins[0] > 0 else 'all values'}"
                 else:
                     range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
-                range_str = f"≥ {bin_start}"
+                # For last bin, use > instead of ≥ for lactate
+                if var_name == 'Lactate' and bin_start == 3.0:
+                    range_str = f"> {bin_start}"
+                else:
+                    range_str = f"≥ {bin_start}"
             else:
-                range_str = f"{bin_start} to < {bin_end}"
+                # For middle bins, use inclusive range notation (e.g., "2.0 – 3.0")
+                range_str = f"{bin_start} – {bin_end}"
             
             # Add clinical context
             if 'Critical' in label:
@@ -89,7 +95,8 @@ def create_continuous_label_sheet():
                 'Variable Name': var_name,
                 'Unit': unit,
                 'Value Range': range_str,
-                'Binned Label': label
+                'Binned Label': label,
+                'Reference': reference
             })
     
     return pd.DataFrame(rows)
