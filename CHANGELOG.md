@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.21] - 2025-11-17 10:30:00
+
+### Changed
+
+- **Updated Prothrom_Sec (Prothrombin Time) Binning Thresholds**
+  - Revised prothrombin time binning to use King's College Criteria threshold for poor prognosis in acetaminophen toxicity based on [O'Grady et al. (1989)](https://pubmed.ncbi.nlm.nih.gov/2490426/)
+  - < 13.5 seconds: "Normal / Low Risk (Physiological baseline)" (exclusive threshold)
+  - 13.5 – 100 seconds: "Abnormal / Monitor Trajectory (Indicates coagulopathy and liver injury requiring dynamic trend analysis)" (inclusive range)
+  - ≥ 100 seconds: "Critical / Transplant Consideration (Meets King's College Criteria threshold for poor prognosis in acetaminophen toxicity)" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 13.5, 100, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle Prothrom_Sec with proper inclusive/exclusive boundaries
+  - Added reference field to `BINNING_THRESHOLDS` for Prothrom_Sec
+  - Updated range formatting in `create_label_legend.py` to display proper ranges (e.g., "< 13.5", "13.5 – 100", "≥ 100") for Prothrom_Sec
+
 ## [0.5.20] - 2025-11-17 10:00:00
 
 ### Changed
