@@ -33,9 +33,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://jamanetwork.com/journals/jama/article-abstract/2569055'
     },
     'WBC': {
-        'bins': [0, 4.0, 10.0, 15.0, float('inf')],
-        'labels': ['Low (Leukopenia)', 'Normal', 'Elevated (Leukocytosis)', 'High (Severe Leukocytosis)'],
-        'unit': 'k/uL'
+        'bins': [0, 1.0, 3.0, 15.0, 20.0, 40.0, float('inf')],
+        'labels': ['Critical Low', 'Moderate Low', 'Normal', 'Mild High', 'Moderate High', 'Critical High'],
+        'unit': 'k/uL',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/3928249/'
     },
     'Platelet_Cnt': {
         'bins': [0, 50, 100, 150, float('inf')],
@@ -160,6 +161,23 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 7 – 8 g/dL: Conditional/Pre-Operative Alert
         elif value > 8.0:
             return labels[2]  # > 8 g/dL: Hemodynamically Adequate
+        else:
+            return None
+    
+    # Special handling for WBC with APACHE II thresholds
+    if var_name == 'WBC':
+        if value < 1.0:
+            return labels[0]  # < 1 k/uL: Critical Low
+        elif 1.0 <= value < 3.0:
+            return labels[1]  # 1 – 2.9 k/uL: Moderate Low
+        elif 3.0 <= value < 15.0:
+            return labels[2]  # 3 – 14.9 k/uL: Normal
+        elif 15.0 <= value < 20.0:
+            return labels[3]  # 15 – 19.9 k/uL: Mild High
+        elif 20.0 <= value < 40.0:
+            return labels[4]  # 20 – 39.9 k/uL: Moderate High
+        elif value >= 40.0:
+            return labels[5]  # ≥ 40 k/uL: Critical High
         else:
             return None
     

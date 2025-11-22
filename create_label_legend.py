@@ -81,11 +81,25 @@ def create_continuous_label_sheet():
                     range_str = f"> {bin_start}"
                 elif var_name == 'Hemoglobin' and bin_start == 8.0:
                     range_str = f"> {bin_start}"
+                elif var_name == 'WBC' and bin_start == 40.0:
+                    range_str = f"≥ {int(bin_start)}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
-                # For middle bins, use inclusive range notation (e.g., "2.0 – 3.0")
-                range_str = f"{bin_start} – {bin_end}"
+                # For middle bins, use inclusive range notation
+                # Special handling for WBC to show upper bound as one decimal less
+                if var_name == 'WBC':
+                    # Format upper bound as one decimal less than bin_end
+                    upper_bound = bin_end - 0.1
+                    if bin_start == 0:
+                        range_str = f"< {int(bin_end)}"
+                    elif upper_bound.is_integer():
+                        range_str = f"{int(bin_start)} – {int(upper_bound)}"
+                    else:
+                        range_str = f"{int(bin_start)} – {upper_bound:.1f}"
+                else:
+                    # Standard inclusive range notation (e.g., "2.0 – 3.0")
+                    range_str = f"{bin_start} – {bin_end}"
             
             # Add clinical context
             if 'Critical' in label:
