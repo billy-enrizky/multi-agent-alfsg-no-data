@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.20] - 2025-11-17 10:00:00
+
+### Changed
+
+- **Updated Ratio_PO2_FiO2 (PaO₂/FiO₂ Ratio) Binning Thresholds**
+  - Revised PaO₂/FiO₂ ratio binning to use ARDS classification criteria based on [JAMA Network](https://jamanetwork.com/journals/jama/article-abstract/1160659)
+  - ≤ 100 mmHg: "Severe ARDS (Critical instability; high risk of hypoxia-induced cerebral edema)" (inclusive threshold)
+  - 100 < x ≤ 200 mmHg: "Moderate ARDS (Significant respiratory compromise; potential contraindication for immediate transport/surgery)" (exclusive lower bound, inclusive upper bound)
+  - 200 < x ≤ 300 mmHg: "Mild ARDS (Early sign of deterioration; warning for AI monitoring)" (exclusive lower bound, inclusive upper bound)
+  - > 300 mmHg: "No ARDS (Physiologically stable respiratory status)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 100, 200, 300, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all four ARDS categories with proper inclusive/exclusive boundaries
+  - Added reference field to `BINNING_THRESHOLDS` for Ratio_PO2_FiO2
+  - Updated range formatting in `create_label_legend.py` to display proper ranges (e.g., "≤ 100", "100 < x ≤ 200", "200 < x ≤ 300", "> 300") for Ratio_PO2_FiO2
+
 ## [0.5.19] - 2025-11-17 09:30:00
 
 ### Changed

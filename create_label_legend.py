@@ -77,6 +77,8 @@ def create_continuous_label_sheet():
                         range_str = f"< {int(bin_end)}"
                     elif var_name == 'ammonia' and bin_end == 100.0:
                         range_str = f"< {int(bin_end)}"
+                    elif var_name == 'Ratio_PO2_FiO2' and bin_end == 100.0:
+                        range_str = f"≤ {int(bin_end)}"
                     else:
                         range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
@@ -110,6 +112,8 @@ def create_continuous_label_sheet():
                 elif var_name == 'Venous_Ammonia' and bin_start == 150.0:
                     range_str = f"> {int(bin_start)}"
                 elif var_name == 'ammonia' and bin_start == 200.0:
+                    range_str = f"> {int(bin_start)}"
+                elif var_name == 'Ratio_PO2_FiO2' and bin_start == 300.0:
                     range_str = f"> {int(bin_start)}"
                 else:
                     range_str = f"≥ {bin_start}"
@@ -192,6 +196,14 @@ def create_continuous_label_sheet():
                         range_str = f"< {int(bin_end)}"
                     else:
                         range_str = f"{int(bin_start)} – {int(upper_bound)}"
+                elif var_name == 'Ratio_PO2_FiO2':
+                    # Format with exclusive lower bound and inclusive upper bound (e.g., "100 < x ≤ 200")
+                    if bin_start == 0:
+                        # First bin is handled separately (≤ 100)
+                        range_str = f"≤ {int(bin_end)}"
+                    else:
+                        # Middle bins: "100 < x ≤ 200", "200 < x ≤ 300"
+                        range_str = f"{int(bin_start)} < x ≤ {int(bin_end)}"
                 else:
                     # Standard inclusive range notation (e.g., "2.0 – 3.0")
                     range_str = f"{bin_start} – {bin_end}"
