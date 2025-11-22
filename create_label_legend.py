@@ -83,6 +83,8 @@ def create_continuous_label_sheet():
                         range_str = f"< {bin_end:.1f}"
                     elif var_name == 'PMN' and bin_end == 40.0:
                         range_str = f"< {int(bin_end)}"
+                    elif var_name == 'Lymph' and bin_end == 5.6:
+                        range_str = f"< {bin_end:.1f}"
                     else:
                         range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
@@ -123,6 +125,8 @@ def create_continuous_label_sheet():
                     range_str = f">= {int(bin_start)}"
                 elif var_name == 'PMN' and bin_start == 80.0:
                     range_str = f"> {int(bin_start)}"
+                elif var_name == 'Lymph' and bin_start == 17.8:
+                    range_str = f"> {bin_start:.1f}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
@@ -232,6 +236,13 @@ def create_continuous_label_sheet():
                     else:
                         # Standard inclusive range notation
                         range_str = f"{int(bin_start)} – {int(bin_end)}"
+                elif var_name == 'Lymph':
+                    # Format with inclusive range for middle bin (5.6% – 17.8%)
+                    if bin_start == 5.6 and bin_end == 17.8:
+                        range_str = f"{bin_start:.1f} – {bin_end:.1f}"
+                    else:
+                        # Standard inclusive range notation with decimal precision
+                        range_str = f"{bin_start:.1f} – {bin_end:.1f}"
                 else:
                     # Standard inclusive range notation (e.g., "2.0 – 3.0")
                     range_str = f"{bin_start} – {bin_end}"

@@ -117,9 +117,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://www.ucsfhealth.org/medical-tests/blood-differential-test'
     },
     'Lymph': {
-        'bins': [0, 15, 30, 45, float('inf')],
-        'labels': ['Low (Lymphopenia)', 'Normal', 'Elevated', 'High'],
-        'unit': '%'
+        'bins': [0, 5.6, 17.8, float('inf')],
+        'labels': ['High Risk / Severe Lymphopenia', 'Intermediate Risk / Warning', 'Low Risk / Normal'],
+        'unit': '%',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/25045842/'
     }
 }
 
@@ -346,6 +347,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 40% – 80%: Normal Physiologic Range
         elif value > 80.0:
             return labels[2]  # > 80%: Hyper-inflammatory / SIRS
+        else:
+            return None
+    
+    # Special handling for Lymph with neutrophil-lymphocyte ratio prognostic thresholds
+    if var_name == 'Lymph':
+        if value < 5.6:
+            return labels[0]  # < 5.6%: High Risk / Severe Lymphopenia
+        elif 5.6 <= value <= 17.8:
+            return labels[1]  # 5.6% – 17.8%: Intermediate Risk / Warning
+        elif value > 17.8:
+            return labels[2]  # > 17.8%: Low Risk / Normal
         else:
             return None
     
