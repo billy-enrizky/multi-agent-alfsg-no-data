@@ -81,9 +81,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://www.ncbi.nlm.nih.gov/books/NBK441917/'
     },
     'Arterial_Ammonia': {
-        'bins': [0, 50, 100, 200, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High', 'Critical (Severe Hyperammonemia)'],
-        'unit': 'μmol/L'
+        'bins': [0, 150, 200, float('inf')],
+        'labels': ['Lower Risk (Intracranial hypertension is infrequent below this threshold, though hepatic encephalopathy may still be present)', 'High Risk (Significant risk of developing intracranial hypertension; indicates need for aggressive monitoring)', 'Critical Risk (Strongly associated with cerebral herniation; immediate neuroprotective strategies and transplant assessment required)'],
+        'unit': 'μmol/L',
+        'reference': 'https://onlinelibrary.wiley.com/doi/10.1002/hep.510290309'
     },
     'Venous_Ammonia': {
         'bins': [0, 50, 100, 200, float('inf')],
@@ -272,6 +273,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[0]  # < 7.30: Urgent Transplant Candidate (High likelihood of mortality without liver transplantation; meets the single KCC criterion for listing regardless of encephalopathy grade)
         elif value >= 7.30:
             return labels[1]  # >= 7.30: Monitor / Assess Other Criteria (Survival is possible with supportive care unless the patient meets the alternative criteria triad)
+        else:
+            return None
+    
+    # Special handling for Arterial_Ammonia with intracranial hypertension risk thresholds
+    if var_name == 'Arterial_Ammonia':
+        if value < 150.0:
+            return labels[0]  # < 150 μmol/L: Lower Risk (Intracranial hypertension is infrequent below this threshold, though hepatic encephalopathy may still be present)
+        elif 150.0 <= value < 200.0:
+            return labels[1]  # 150 – 200 μmol/L: High Risk (Significant risk of developing intracranial hypertension; indicates need for aggressive monitoring)
+        elif value > 200.0:
+            return labels[2]  # > 200 μmol/L: Critical Risk (Strongly associated with cerebral herniation; immediate neuroprotective strategies and transplant assessment required)
         else:
             return None
     

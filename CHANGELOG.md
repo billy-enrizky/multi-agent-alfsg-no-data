@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.17] - 2025-11-17 08:30:00
+
+### Changed
+
+- **Updated Arterial_Ammonia Binning Thresholds**
+  - Revised arterial ammonia binning to use intracranial hypertension risk thresholds based on [Wiley Online Library - Hepatology](https://onlinelibrary.wiley.com/doi/10.1002/hep.510290309)
+  - < 150 μmol/L: "Lower Risk (Intracranial hypertension is infrequent below this threshold, though hepatic encephalopathy may still be present)"
+  - 150 – 200 μmol/L: "High Risk (Significant risk of developing intracranial hypertension; indicates need for aggressive monitoring)" (inclusive range)
+  - > 200 μmol/L: "Critical Risk (Strongly associated with cerebral herniation; immediate neuroprotective strategies and transplant assessment required)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 150, 200, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all three risk categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for Arterial_Ammonia
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "150 – 200") and "> 200" for Arterial_Ammonia
+
 ## [0.5.16] - 2025-11-17 08:00:00
 
 ### Changed
