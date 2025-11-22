@@ -77,6 +77,8 @@ def create_continuous_label_sheet():
                     range_str = f"> {bin_start}"
                 elif var_name == 'Creat' and bin_start == 3.4:
                     range_str = f"> {bin_start}"
+                elif var_name == 'INR1' and bin_start == 6.5:
+                    range_str = f"> {bin_start}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:

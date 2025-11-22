@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2025-11-17 03:30:00
+
+### Changed
+
+- **Updated INR1 (International Normalized Ratio) Binning Thresholds**
+  - Revised INR1 binning to use King's College Criteria based on [O'Grady et al. (1989)](https://pubmed.ncbi.nlm.nih.gov/2490426/)
+  - < 1.5: "No Acute Liver Failure (Acute Liver Injury or Normal)"
+  - 1.5 – 6.5: "Acute Liver Failure / Monitor (Standard medical management)" (inclusive range)
+  - > 6.5: "High Risk / Transplant Candidate (Criteria met if used in isolation with other markers*)" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 1.5, 6.5, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle inclusive middle range and exclusive upper bound for INR1
+  - Added reference field to `BINNING_THRESHOLDS` for INR1
+  - Updated range formatting in `create_label_legend.py` to display "< 1.5", "1.5 – 6.5", and "> 6.5" for INR1
+
 ## [0.5.6] - 2025-11-17 03:00:00
 
 ### Changed

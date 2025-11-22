@@ -21,9 +21,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'INR1': {
-        'bins': [0, 1.2, 1.8, 3.0, float('inf')],
-        'labels': ['Normal', 'Elevated (Hepatic Dysfunction)', 'Severely Elevated (Synthetic Failure)', 'Critical'],
-        'unit': ''
+        'bins': [0, 1.5, 6.5, float('inf')],
+        'labels': ['No Acute Liver Failure (Acute Liver Injury or Normal)', 'Acute Liver Failure / Monitor (Standard medical management)', 'High Risk / Transplant Candidate (Criteria met if used in isolation with other markers*)'],
+        'unit': '',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'Hemoglobin': {
         'bins': [0, 10.0, 12.0, 15.0, float('inf')],
@@ -136,6 +137,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[0]  # ≤ 3.4 mg/dL: Lower Risk (Does not meet the specific renal transplant criterion)
         elif value > 3.4:
             return labels[1]  # > 3.4 mg/dL: High Risk (Meets King's College Criteria component for urgent transplant consideration)
+        else:
+            return None
+    
+    # Special handling for INR1 with King's College Criteria thresholds
+    if var_name == 'INR1':
+        if value < 1.5:
+            return labels[0]  # < 1.5: No Acute Liver Failure (Acute Liver Injury or Normal)
+        elif 1.5 <= value <= 6.5:
+            return labels[1]  # 1.5 – 6.5: Acute Liver Failure / Monitor (Standard medical management)
+        elif value > 6.5:
+            return labels[2]  # > 6.5: High Risk / Transplant Candidate (Criteria met if used in isolation with other markers*)
         else:
             return None
     
