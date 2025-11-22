@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.11] - 2025-11-17 05:30:00
+
+### Changed
+
+- **Updated Bilirubin Binning Thresholds**
+  - Revised bilirubin binning to use SOFA score liver function criteria based on [Moreno et al. (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC9837980/)
+  - < 1.2 mg/dL: "0 (Normal function)"
+  - 1.2 – 1.9 mg/dL: "1 (Mild dysfunction)" (inclusive range)
+  - 2.0 – 5.9 mg/dL: "2 (Moderate dysfunction)" (inclusive range)
+  - 6.0 – 11.9 mg/dL: "3 (Severe dysfunction)" (inclusive range)
+  - >= 12.0 mg/dL: "4 (Critical liver failure)" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 1.2, 2.0, 6.0, 12.0, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all five SOFA score categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for Bilirubin
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "1.2 – 1.9", "2.0 – 5.9", "6.0 – 11.9") and ">= 12.0" for Bilirubin
+
 ## [0.5.10] - 2025-11-17 05:00:00
 
 ### Changed
