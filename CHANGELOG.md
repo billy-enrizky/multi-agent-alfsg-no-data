@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.19] - 2025-11-17 09:30:00
+
+### Changed
+
+- **Updated ammonia Binning Thresholds**
+  - Revised ammonia binning to use intracranial hypertension and cerebral herniation risk thresholds based on [Bernal et al. (2007)](https://pubmed.ncbi.nlm.nih.gov/17685471/)
+  - < 100 μmol/L: "Lower Risk of Neurotoxicity"
+  - 100 – 200 μmol/L: "High Risk of Intracranial Hypertension (ICH) & Severe Encephalopathy" (inclusive range)
+  - > 200 μmol/L: "Critical Risk of Cerebral Herniation" (exclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 100, 200, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all three risk categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for ammonia
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "100 – 200") and "> 200" for ammonia
+
 ## [0.5.18] - 2025-11-17 09:00:00
 
 ### Changed

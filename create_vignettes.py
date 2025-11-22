@@ -93,9 +93,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/17685471/'
     },
     'ammonia': {
-        'bins': [0, 50, 100, 200, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High', 'Critical (Severe Hyperammonemia)'],
-        'unit': 'μmol/L'
+        'bins': [0, 100, 200, float('inf')],
+        'labels': ['Lower Risk of Neurotoxicity', 'High Risk of Intracranial Hypertension (ICH) & Severe Encephalopathy', 'Critical Risk of Cerebral Herniation'],
+        'unit': 'μmol/L',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/17685471/'
     },
     'Ratio_PO2_FiO2': {
         'bins': [0, 200, 300, 400, float('inf')],
@@ -296,6 +297,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[1]  # 100 – 150 μmol/L: High Risk (Predictive of severe Hepatic Encephalopathy [Grade III/IV]; indicates deterioration requiring intensive monitoring)
         elif value > 150.0:
             return labels[2]  # > 150 μmol/L: Critical Risk (High probability of intracranial hypertension and cerebral edema; triggers immediate neuroprotective protocols and urgent transplant listing assessment)
+        else:
+            return None
+    
+    # Special handling for ammonia with intracranial hypertension and cerebral herniation risk thresholds
+    if var_name == 'ammonia':
+        if value < 100.0:
+            return labels[0]  # < 100 μmol/L: Lower Risk of Neurotoxicity
+        elif 100.0 <= value < 200.0:
+            return labels[1]  # 100 – 200 μmol/L: High Risk of Intracranial Hypertension (ICH) & Severe Encephalopathy
+        elif value > 200.0:
+            return labels[2]  # > 200 μmol/L: Critical Risk of Cerebral Herniation
         else:
             return None
     
