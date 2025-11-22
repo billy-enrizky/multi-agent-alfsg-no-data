@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.9] - 2025-11-17 04:30:00
+
+### Changed
+
+- **Updated WBC (White Blood Cell Count) Binning Thresholds**
+  - Revised WBC binning to use APACHE II severity classification based on [Knaus et al. (1985)](https://pubmed.ncbi.nlm.nih.gov/3928249/)
+  - < 1 k/uL: "Critical Low"
+  - 1 – 2.9 k/uL: "Moderate Low" (inclusive range)
+  - 3 – 14.9 k/uL: "Normal" (inclusive range)
+  - 15 – 19.9 k/uL: "Mild High" (inclusive range)
+  - 20 – 39.9 k/uL: "Moderate High" (inclusive range)
+  - ≥ 40 k/uL: "Critical High" (inclusive threshold)
+  - Updated `BINNING_THRESHOLDS` in `create_vignettes.py` with new bins: [0, 1.0, 3.0, 15.0, 20.0, 40.0, inf]
+  - Added special binning logic in `bin_continuous_value()` to handle all six WBC categories with proper inclusive ranges
+  - Added reference field to `BINNING_THRESHOLDS` for WBC
+  - Updated range formatting in `create_label_legend.py` to display proper inclusive ranges (e.g., "1 – 2.9", "3 – 14.9") and "≥ 40" for WBC
+
 ## [0.5.8] - 2025-11-17 04:00:00
 
 ### Changed
