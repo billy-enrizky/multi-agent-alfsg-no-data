@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 # Clinical binning thresholds based on medical literature and README examples
 BINNING_THRESHOLDS = {
     'Lactate': {
-        'bins': [0, 2.0, 4.0, 7.0, float('inf')],
-        'labels': ['Normal', 'Elevated (Hyperlactatemia)', 'Severely Elevated (Lactic Acidosis)', 'Critical (High Mortality Risk)'],
-        'unit': 'mmol/L'
+        'bins': [0, 2.0, 3.0, float('inf')],
+        'labels': ['Likely Spontaneous Recovery (Low Risk)', 'Intermediate Risk (Requires Trend Monitoring)', 'Urgent Transplant Candidate (High Risk) (Post-Fluid Resuscitation)'],
+        'unit': 'mmol/L',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/11867109/'
     },
     'Creat': {
         'bins': [0, 1.2, 1.6, 2.5, float('inf')],
@@ -117,6 +118,18 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
     bins = thresholds['bins']
     labels = thresholds['labels']
     
+    # Special handling for Lactate with inclusive middle range and exclusive upper bound
+    if var_name == 'Lactate':
+        if value < 2.0:
+            return labels[0]  # < 2.0 mmol/L: Likely Spontaneous Recovery (Low Risk)
+        elif 2.0 <= value <= 3.0:
+            return labels[1]  # 2.0 – 3.0 mmol/L: Intermediate Risk (Requires Trend Monitoring)
+        elif value > 3.0:
+            return labels[2]  # > 3.0 mmol/L: Urgent Transplant Candidate (High Risk)
+        else:
+            return None
+    
+    # Standard binning for other variables
     # Find which bin the value falls into
     for i in range(len(bins) - 1):
         if bins[i] <= value < bins[i + 1]:
