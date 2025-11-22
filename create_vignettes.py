@@ -39,9 +39,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://pubmed.ncbi.nlm.nih.gov/3928249/'
     },
     'Platelet_Cnt': {
-        'bins': [0, 50, 100, 150, float('inf')],
-        'labels': ['Critical (Severe Thrombocytopenia)', 'Low (Thrombocytopenia)', 'Borderline', 'Normal'],
-        'unit': 'k/uL'
+        'bins': [0, 20, 50, 100, 150, float('inf')],
+        'labels': ['4 (Extreme Thrombocytopenia / Risk of Spontaneous Bleeding)', '3 (Severe Thrombocytopenia)', '2 (Moderate Thrombocytopenia)', '1 (Mild Thrombocytopenia)', '0 (No Coagulopathy)'],
+        'unit': 'k/uL',
+        'reference': 'https://files.asprtracie.hhs.gov/documents/aspr-tracie-sofa-score-fact-sheet.pdf'
     },
     'Bilirubin': {
         'bins': [0, 1.2, 2.0, 5.0, float('inf')],
@@ -178,6 +179,21 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[4]  # 20 – 39.9 k/uL: Moderate High
         elif value >= 40.0:
             return labels[5]  # ≥ 40 k/uL: Critical High
+        else:
+            return None
+    
+    # Special handling for Platelet_Cnt with SOFA score thresholds
+    if var_name == 'Platelet_Cnt':
+        if value < 20.0:
+            return labels[0]  # < 20 k/uL: 4 (Extreme Thrombocytopenia / Risk of Spontaneous Bleeding)
+        elif 20.0 <= value < 50.0:
+            return labels[1]  # 20 – 49 k/uL: 3 (Severe Thrombocytopenia)
+        elif 50.0 <= value < 100.0:
+            return labels[2]  # 50 – 99 k/uL: 2 (Moderate Thrombocytopenia)
+        elif 100.0 <= value < 150.0:
+            return labels[3]  # 100 – 149 k/uL: 1 (Mild Thrombocytopenia)
+        elif value >= 150.0:
+            return labels[4]  # >= 150 k/uL: 0 (No Coagulopathy)
         else:
             return None
     
