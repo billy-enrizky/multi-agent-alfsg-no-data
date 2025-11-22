@@ -79,6 +79,8 @@ def create_continuous_label_sheet():
                         range_str = f"< {int(bin_end)}"
                     elif var_name == 'Ratio_PO2_FiO2' and bin_end == 100.0:
                         range_str = f"≤ {int(bin_end)}"
+                    elif var_name == 'Prothrom_Sec' and bin_end == 13.5:
+                        range_str = f"< {bin_end:.1f}"
                     else:
                         range_str = f"< {bin_end}"
             elif bin_end == float('inf'):
@@ -115,6 +117,8 @@ def create_continuous_label_sheet():
                     range_str = f"> {int(bin_start)}"
                 elif var_name == 'Ratio_PO2_FiO2' and bin_start == 300.0:
                     range_str = f"> {int(bin_start)}"
+                elif var_name == 'Prothrom_Sec' and bin_start == 100.0:
+                    range_str = f">= {int(bin_start)}"
                 else:
                     range_str = f"≥ {bin_start}"
             else:
@@ -204,6 +208,19 @@ def create_continuous_label_sheet():
                     else:
                         # Middle bins: "100 < x ≤ 200", "200 < x ≤ 300"
                         range_str = f"{int(bin_start)} < x ≤ {int(bin_end)}"
+                elif var_name == 'Prothrom_Sec':
+                    # Format upper bound as one less than bin_end for inclusive ranges (with decimal precision)
+                    upper_bound = bin_end - 0.1
+                    if bin_start == 0:
+                        range_str = f"< {bin_end:.1f}"
+                    elif bin_start == 13.5 and bin_end == 100.0:
+                        # Special case: show inclusive range "13.5 – 100"
+                        range_str = f"{bin_start:.1f} – {int(bin_end)}"
+                    else:
+                        if upper_bound.is_integer():
+                            range_str = f"{bin_start:.1f} – {int(upper_bound)}"
+                        else:
+                            range_str = f"{bin_start:.1f} – {upper_bound:.1f}"
                 else:
                     # Standard inclusive range notation (e.g., "2.0 – 3.0")
                     range_str = f"{bin_start} – {bin_end}"

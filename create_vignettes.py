@@ -105,9 +105,10 @@ BINNING_THRESHOLDS = {
         'reference': 'https://jamanetwork.com/journals/jama/article-abstract/1160659'
     },
     'Prothrom_Sec': {
-        'bins': [0, 12, 15, 18, float('inf')],
-        'labels': ['Normal', 'Elevated', 'High', 'Critical (Severe Coagulopathy)'],
-        'unit': 'seconds'
+        'bins': [0, 13.5, 100, float('inf')],
+        'labels': ['Normal / Low Risk (Physiological baseline)', 'Abnormal / Monitor Trajectory (Indicates coagulopathy and liver injury requiring dynamic trend analysis)', 'Critical / Transplant Consideration (Meets King\'s College Criteria threshold for poor prognosis in acetaminophen toxicity)'],
+        'unit': 'seconds',
+        'reference': 'https://pubmed.ncbi.nlm.nih.gov/2490426/'
     },
     'PMN': {
         'bins': [0, 40, 60, 80, float('inf')],
@@ -322,6 +323,17 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return labels[2]  # 200 < x ≤ 300 mmHg: Mild ARDS (Early sign of deterioration; warning for AI monitoring)
         elif value > 300.0:
             return labels[3]  # > 300 mmHg: No ARDS (Physiologically stable respiratory status)
+        else:
+            return None
+    
+    # Special handling for Prothrom_Sec with King's College Criteria threshold
+    if var_name == 'Prothrom_Sec':
+        if value < 13.5:
+            return labels[0]  # < 13.5 seconds: Normal / Low Risk (Physiological baseline)
+        elif 13.5 <= value < 100.0:
+            return labels[1]  # 13.5 – 100 seconds: Abnormal / Monitor Trajectory (Indicates coagulopathy and liver injury requiring dynamic trend analysis)
+        elif value >= 100.0:
+            return labels[2]  # >= 100 seconds: Critical / Transplant Consideration (Meets King's College Criteria threshold for poor prognosis in acetaminophen toxicity)
         else:
             return None
     
