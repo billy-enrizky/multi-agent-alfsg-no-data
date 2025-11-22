@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Applies to both comprehensive vignettes and agent-specific vignettes
   - Provides complete clinical context with both quantitative and qualitative information
 
+- **Enhanced Trend Information to Include Values and Rate of Change**
+  - Updated `calculate_trend_detailed()` function in `create_vignettes.py`
+  - Trend descriptions now include actual values, absolute change, and percentage change
+  - Format: "trend (from valueA unit to valueB unit with change ±X.XX unit with percentage change ±X.XX%, from previous_bin to current_bin)"
+  - Example: "Worsening (from 2.0 mmol/L to 3.5 mmol/L with change +1.50 mmol/L with percentage change +75.00%, from Intermediate Risk (Requires Trend Monitoring) to Urgent Transplant Candidate (High Risk) (Post-Fluid Resuscitation))"
+  - If unit is not available, format excludes unit from values and change
+  - Includes both quantitative change metrics and qualitative bin transitions
+  - Applies to all trend history entries in comprehensive and agent-specific vignettes
+
 ## [0.5.24] - 2025-11-17 12:00:00
 
 ### Added
