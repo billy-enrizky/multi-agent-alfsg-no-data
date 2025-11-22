@@ -539,17 +539,31 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     else:
         trend = "Stable"
     
-    # Add context about the values
+    # Format values with unit if available
+    if unit:
+        previous_str = f"{previous} {unit}"
+        current_str = f"{current} {unit}"
+        absolute_change_str = f"{absolute_change:+.2f} {unit}"
+    else:
+        previous_str = str(previous)
+        current_str = str(current)
+        absolute_change_str = f"{absolute_change:+.2f}"
+    
+    # Format percentage change
+    percent_change_str = f"{percent_change:+.2f}%"
+    
+    # Add context about the values, absolute change, and percentage change
     current_bin = bin_continuous_value(current, var_name)
     previous_bin = bin_continuous_value(previous, var_name)
     
     if current_bin and previous_bin:
         if current_bin != previous_bin:
-            return f"{trend} (from {previous_bin} to {current_bin})"
+            return f"{trend} (from {previous_str} to {current_str} with change {absolute_change_str} with percentage change {percent_change_str}, from {previous_bin} to {current_bin})"
         else:
-            return f"{trend} (remains {current_bin})"
+            return f"{trend} (from {previous_str} to {current_str} with change {absolute_change_str} with percentage change {percent_change_str}, remains {current_bin})"
     
-    return trend
+    # Fallback if bins are not available
+    return f"{trend} (from {previous_str} to {current_str} with change {absolute_change_str} with percentage change {percent_change_str})"
 
 def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     """Create clinical vignettes for each patient-day combination."""
