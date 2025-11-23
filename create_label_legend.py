@@ -276,10 +276,11 @@ def create_time_trend_label_sheet():
     rows = []
     
     # Trend categories based on calculate_trend_detailed function
+    # Using consistent descriptive labels (not evaluative)
     trend_categories = [
         {
             'Percent Change Range': '< -100%',
-            'Trend Label': 'Rapidly Improving',
+            'Trend Label': 'Rapidly Decreasing',
             'Description': 'Very large decrease (>100% reduction)'
         },
         {
@@ -289,7 +290,7 @@ def create_time_trend_label_sheet():
         },
         {
             'Percent Change Range': '-50% to -20%',
-            'Trend Label': 'Improving',
+            'Trend Label': 'Decreasing',
             'Description': 'Moderate decrease (20-50% reduction)'
         },
         {
@@ -309,7 +310,7 @@ def create_time_trend_label_sheet():
         },
         {
             'Percent Change Range': '+20% to +50%',
-            'Trend Label': 'Worsening',
+            'Trend Label': 'Increasing',
             'Description': 'Moderate increase (20-50% increase)'
         },
         {
@@ -319,7 +320,7 @@ def create_time_trend_label_sheet():
         },
         {
             'Percent Change Range': '> +100%',
-            'Trend Label': 'Rapidly Worsening',
+            'Trend Label': 'Rapidly Increasing',
             'Description': 'Very large increase (>100% increase)'
         }
     ]

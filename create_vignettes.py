@@ -517,23 +517,23 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     absolute_change = current - previous
     unit = BINNING_THRESHOLDS.get(var_name, {}).get('unit', '')
     
-    # More nuanced trend classification
+    # More nuanced trend classification (using consistent descriptive labels)
     if abs(percent_change) < 5:
         trend = "Stable"
     elif percent_change > 100:
-        trend = "Rapidly Worsening"
+        trend = "Rapidly Increasing"
     elif percent_change > 50:
         trend = "Rapidly Increasing"
     elif percent_change > 20:
-        trend = "Worsening"
+        trend = "Increasing"
     elif percent_change > 5:
         trend = "Mildly Increasing"
     elif percent_change < -100:
-        trend = "Rapidly Improving"
+        trend = "Rapidly Decreasing"
     elif percent_change < -50:
         trend = "Rapidly Decreasing"
     elif percent_change < -20:
-        trend = "Improving"
+        trend = "Decreasing"
     elif percent_change < -5:
         trend = "Mildly Decreasing"
     else:
