@@ -521,7 +521,7 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     if abs(percent_change) < 5:
         trend = "Stable"
     elif percent_change > 100:
-        trend = "Rapidly Increasing"
+        trend = "Extremely Increasing"
     elif percent_change > 50:
         trend = "Rapidly Increasing"
     elif percent_change > 20:
@@ -529,7 +529,7 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     elif percent_change > 5:
         trend = "Mildly Increasing"
     elif percent_change < -100:
-        trend = "Rapidly Decreasing"
+        trend = "Extremely Decreasing"
     elif percent_change < -50:
         trend = "Rapidly Decreasing"
     elif percent_change < -20:
