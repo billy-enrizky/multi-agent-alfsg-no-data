@@ -280,7 +280,7 @@ def create_time_trend_label_sheet():
     trend_categories = [
         {
             'Percent Change Range': '< -100%',
-            'Trend Label': 'Rapidly Decreasing',
+            'Trend Label': 'Extremely Decreasing',
             'Description': 'Very large decrease (>100% reduction)'
         },
         {
@@ -320,7 +320,7 @@ def create_time_trend_label_sheet():
         },
         {
             'Percent Change Range': '> +100%',
-            'Trend Label': 'Rapidly Increasing',
+            'Trend Label': 'Extremely Increasing',
             'Description': 'Very large increase (>100% increase)'
         }
     ]

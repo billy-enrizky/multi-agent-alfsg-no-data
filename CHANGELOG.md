@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.30] - 2025-11-23 16:24:20
+
+### Changed
+
+- **Differentiated Extreme Trend Ranges**
+  - Updated `calculate_trend_detailed()` function in `create_vignettes.py` to use distinct labels for extreme ranges
+  - Changed `< -100%` range from "Rapidly Decreasing" to "Extremely Decreasing" to differentiate from `-100% to -50%` range
+  - Changed `> +100%` range from "Rapidly Increasing" to "Extremely Increasing" to differentiate from `+50% to +100%` range
+  - Updated `create_time_trend_label_sheet()` in `create_label_legend.py` to match the new differentiated labels
+  - Each percent change range now has a unique label, providing better granularity for extreme changes
+  - Maintains consistent descriptive labeling (direction only, not evaluative)
+
 ## [0.5.29] - 2025-11-23 16:18:41
 
 ### Changed
