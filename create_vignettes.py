@@ -680,6 +680,24 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Created {len(vignettes_df)} vignettes for {vignettes_df['subject_id'].nunique()} subjects")
     logger.info(f"Vignette shape: {vignettes_df.shape}")
     
+    # Filter out rows where all continuous variables are empty
+    logger.info("Filtering out rows with all empty continuous variables...")
+    continuous_vars = list(BINNING_THRESHOLDS.keys())
+    filter_columns = []
+    for var in continuous_vars:
+        filter_columns.extend([f"{var}_binned", f"{var}_value", f"{var}_trend"])
+    
+    # Check which columns actually exist in the dataframe
+    existing_filter_columns = [col for col in filter_columns if col in vignettes_df.columns]
+    
+    # Filter rows where all specified columns are null/NaN
+    initial_count = len(vignettes_df)
+    mask = vignettes_df[existing_filter_columns].notna().any(axis=1)
+    vignettes_df = vignettes_df[mask].copy()
+    removed_count = initial_count - len(vignettes_df)
+    logger.info(f"Removed {removed_count} rows with all empty continuous variables")
+    logger.info(f"Remaining vignettes: {len(vignettes_df)}")
+    
     # Create comprehensive clinical vignette text
     logger.info("Creating comprehensive clinical vignettes...")
     vignettes_df['patient_day_vignette'] = vignettes_df.apply(create_comprehensive_vignette, axis=1)
