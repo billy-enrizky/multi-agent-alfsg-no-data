@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.27] - 2025-11-23 00:53:00
+
+### Added
+
+- **Agent Variable Mapping Documentation**
+  - Created `create_agent_variable_mapping.py` script to generate Excel file with agent to variable mapping
+  - Output file: `agent_variable_mapping.xlsx` with 3 rows (one per agent) and 2 columns (Agent, Assigned Variables)
+  - Combines continuous and categorical variables for each agent into comma-separated list
+  - Uses same `AGENT_VARIABLES` mapping from `create_vignettes.py` for consistency
+  - Variables sorted alphabetically for clean presentation
+  - Provides clear reference documentation for agent variable assignments
+
 ## [0.5.26] - 2025-11-17 13:00:00
 
 ### Changed
