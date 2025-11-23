@@ -1,8 +1,9 @@
 import os
 import json
 import logging
+import argparse
 import pandas as pd
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, Optional
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from openai import OpenAI
@@ -518,6 +519,14 @@ def process_patient_day(row: pd.Series, graph) -> dict:
 
 def main():
     """Main function to run the multi-agent system on clinical vignettes."""
+    parser = argparse.ArgumentParser(description='Multi-Agent System for Clinical Vignette Predictions')
+    parser.add_argument('--num_patient', type=int, default=None,
+                        help='Number of patients to process (default: all patients)')
+    parser.add_argument('--day', type=int, default=None,
+                        help='Specific day to process (default: maximum day for each patient)')
+    
+    args = parser.parse_args()
+    
     logger.info("Initializing Multi-Agent System")
     
     # Load clinical vignettes
@@ -526,16 +535,52 @@ def main():
     df = pd.read_excel(input_file)
     logger.info(f"Loaded {len(df)} patient-day combinations")
     
+    # Filter by day: if day is None, use maximum day for each patient
+    # If day < 1, use day 1 for each patient
+    # If day > maximum day for a patient, use maximum day for that patient
+    max_day_per_patient = df.groupby('subject_id')['day'].max().reset_index()
+    max_day_per_patient.columns = ['subject_id', 'max_day']
+    df = df.merge(max_day_per_patient, on='subject_id')
+    
+    if args.day is None:
+        logger.info("No specific day provided, filtering to maximum day for each patient")
+        df = df[df['day'] == df['max_day']].drop(columns=['max_day'])
+        logger.info(f"Filtered to maximum day per patient: {len(df)} patient-day combinations")
+    else:
+        # Determine target day for each patient based on specified day
+        # If specified_day < 1, use day 1; if specified_day > max_day, use max_day; otherwise use specified_day
+        # Formula: target_day = max(1, min(specified_day, max_day))
+        logger.info(f"Specified day: {args.day}")
+        
+        # For each patient, determine the actual target day
+        df['target_day'] = df.apply(
+            lambda row: max(1, min(args.day, row['max_day'])),
+            axis=1
+        )
+        
+        # Filter to keep only rows where day matches the target day
+        df = df[df['day'] == df['target_day']].drop(columns=['max_day', 'target_day'])
+        logger.info(f"Filtered to target day per patient (specified: {args.day}, clamped to [1, max_day] per patient): {len(df)} patient-day combinations")
+    
+    # Filter by number of patients if specified
+    if args.num_patient is not None:
+        unique_patients = df['subject_id'].unique()[:args.num_patient]
+        df = df[df['subject_id'].isin(unique_patients)]
+        logger.info(f"Filtered to {args.num_patient} patients: {len(df)} patient-day combinations")
+    
+    if len(df) == 0:
+        logger.warning("No patient-day combinations to process after filtering")
+        return
+    
     # Create the graph
     logger.info("Creating LangGraph workflow...")
     graph = create_multi_agent_graph()
     
-    # Process a sample (first 5 rows for testing)
-    logger.info("Processing sample patient-day combinations...")
-    sample_size = min(1, len(df))
+    # Process all filtered patient-day combinations
+    logger.info(f"Processing {len(df)} patient-day combinations...")
     results = []
     
-    for idx, row in df.head(sample_size).iterrows():
+    for idx, row in df.iterrows():
         logger.info(f"\nProcessing Subject {int(row['subject_id'])}, Day {int(row['day'])}")
         try:
             outputs = process_patient_day(row, graph)
@@ -582,12 +627,14 @@ def main():
                 'actual_survival': row.get('Spont_Survival21', None)
             })
     
-    # Save results
+    # Always save results to Excel file
     results_df = pd.DataFrame(results)
     output_file = 'agent_predictions.xlsx'
     results_df.to_excel(output_file, index=False, engine='openpyxl')
     logger.info(f"\nSaved predictions to {output_file}")
     logger.info(f"\nResults summary:")
+    logger.info(f"Total predictions: {len(results_df)}")
+    logger.info(f"Results saved to {output_file}")
     print(results_df)
 
 if __name__ == '__main__':

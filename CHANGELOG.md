@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.32] - 2025-11-23 16:38:48
+
+### Changed
+
+- **Improved Day Filtering Logic with Per-Patient Bounds**
+  - Updated day filtering to handle edge cases per patient
+  - If specified day < 1, automatically uses day 1 for each patient
+  - If specified day > maximum day for a patient, uses that patient's maximum day
+  - Day filtering now applies bounds per patient (not globally)
+  - Formula: target_day = max(1, min(specified_day, patient_max_day))
+  - Ensures all patients get a valid day within their available range
+
+## [0.5.31] - 2025-11-23 16:36:46
+
+### Changed
+
+- **Enhanced Multi-Agent System Command-Line Interface**
+  - Added `--num_patient` argument to specify number of patients to process (default: all patients)
+  - Added `--day` argument to specify specific day to process (default: maximum day for each patient)
+  - When `--day` is not specified, system automatically filters to maximum day for each patient
+  - Results are always saved to `agent_predictions.xlsx` Excel file
+  - Improved logging to show filtering steps and final result count
+  - Added validation to handle empty results after filtering
+
 ## [0.5.30] - 2025-11-23 16:24:20
 
 ### Changed
