@@ -211,3 +211,5 @@ __marimo__/
 *.xls
 .DS_Store
 .cursor
+
+test_azure.py
