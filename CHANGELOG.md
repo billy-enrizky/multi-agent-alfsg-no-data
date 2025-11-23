@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.26] - 2025-11-17 13:00:00
+
+### Changed
+
+- **Simplified Trend Descriptions to Remove Binning Labels**
+  - Updated `calculate_trend_detailed()` function in `create_vignettes.py`
+  - Removed binning label information from trend descriptions
+  - Trend descriptions now only include: trend direction, values, absolute change, and percentage change
+  - Format: "trend (from valueA unit to valueB unit with change ±X.XX unit with percentage change ±X.XX%)"
+  - Example: "Rapidly Increasing (from 3.11 mg/dL to 5.05 mg/dL with change +1.94 mg/dL with percentage change +62.38%)"
+  - Removed bin transition information (e.g., "from lower risk... to high risk...") to simplify trend descriptions
+  - Applies to all trend history entries in comprehensive and agent-specific vignettes
+  - Binning labels remain available in laboratory values section, only removed from trend descriptions
+
 ## [0.5.25] - 2025-11-17 12:30:00
 
 ### Changed
