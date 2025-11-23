@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.29] - 2025-11-23 16:18:41
+
+### Changed
+
+- **Filter Empty Rows from Vignettes**
+  - Added filtering logic in `create_vignettes()` function to remove rows where all continuous variables are empty
+  - Checks all `_binned`, `_value`, and `_trend` columns for all continuous variables (Lactate, Creat, INR1, Hemoglobin, WBC, Platelet_Cnt, Bilirubin, ALT, NA, HCO3, Phosphate, PH, Arterial_Ammonia, Venous_Ammonia, ammonia, Ratio_PO2_FiO2, Prothrom_Sec, PMN, Lymph)
+  - Removes rows where all specified columns are null/NaN, keeping only rows with at least one non-empty continuous variable
+  - Filtering occurs after vignette row creation but before comprehensive vignette text generation
+  - Logs the number of removed rows for transparency
+  - Ensures only meaningful clinical data is included in the final vignette dataset
+
+## [0.5.28] - 2025-11-23 16:17:50
+
+### Changed
+
+- **Fixed Time Trend Label Consistency**
+  - Updated `calculate_trend_detailed()` function in `create_vignettes.py` to use consistent descriptive labels
+  - Removed evaluative terms ("Improving", "Worsening") that were mixed with descriptive terms ("Decreasing", "Increasing")
+  - All negative percent changes now use "Decreasing" labels: "Rapidly Decreasing", "Decreasing", "Mildly Decreasing"
+  - All positive percent changes now use "Increasing" labels: "Rapidly Increasing", "Increasing", "Mildly Increasing"
+  - Updated `create_time_trend_label_sheet()` in `create_label_legend.py` to match the new consistent labels
+  - Labels are now purely descriptive (direction only) rather than evaluative, which is appropriate since clinical interpretation depends on the specific variable
+  - Fixed inconsistency where negative changes used "Improving" while positive changes used "Worsening"
+
 ## [0.5.27] - 2025-11-23 00:53:00
 
 ### Added
