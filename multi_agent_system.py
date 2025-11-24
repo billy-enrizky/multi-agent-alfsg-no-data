@@ -301,7 +301,7 @@ Based on this clinical information, predict whether this patient will achieve sp
 
     try:
         client, deployment_name, client_type = get_azure_openai_client()
-        
+        logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
         # Try JSON mode first
         response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
@@ -353,6 +353,7 @@ Based on this clinical information, predict whether this patient will achieve sp
         # Fallback to basic completion
         try:
             client, deployment_name, client_type = get_azure_openai_client()
+            logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
             response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             # Parse response manually
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
@@ -412,7 +413,7 @@ Based on this clinical information, predict whether this patient will achieve sp
 
     try:
         client, deployment_name, client_type = get_azure_openai_client()
-        
+        logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
         # Try JSON mode first
         response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
@@ -463,6 +464,7 @@ Based on this clinical information, predict whether this patient will achieve sp
         logger.error(f"Error in Critical Care agent: {e}")
         try:
             client, deployment_name, client_type = get_azure_openai_client()
+            logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
             response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
             # Extract confidence if mentioned, otherwise default to 0.7
@@ -521,7 +523,7 @@ Based on this clinical information, predict whether this patient will achieve sp
 
     try:
         client, deployment_name, client_type = get_azure_openai_client()
-        
+        logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")    
         # Try JSON mode first
         response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
@@ -572,6 +574,7 @@ Based on this clinical information, predict whether this patient will achieve sp
         logger.error(f"Error in Transplant Surgeon agent: {e}")
         try:
             client, deployment_name, client_type = get_azure_openai_client()
+            logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")
             response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
             # Extract confidence if mentioned, otherwise default to 0.7
@@ -662,7 +665,7 @@ Provide your final synthesis and prediction."""
 
     try:
         client, deployment_name, client_type = get_azure_openai_client()
-        
+        logger.info(f"Calling LLM for Final Synthesis with deployment name: {deployment_name}")
         # Use JSON mode for structured output
         response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
         
