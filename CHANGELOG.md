@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensures all vignettes have complete data by using the most recent available value when current day data is missing
   - Source day annotation only appears when value is from a previous day (not shown for current day values)
 
+## [0.5.38] - 2025-11-23 21:50:00
+
+### Added
+
+- **Extended Thinking Support for Claude Opus 4.1**
+  - Added extended thinking feature for `claude-opus-4-1` deployment
+  - Automatically enables thinking with `budget_tokens: 10000` when using claude-opus-4-1
+  - Applied to both structured outputs (`beta.messages.parse()`) and regular messages (`messages.create()`)
+  - Ensures `max_tokens` (16384) is greater than `thinking.budget_tokens` (10000) as required by API
+  - Response extraction properly handles thinking blocks, extracting only text content
+  - Thinking summaries are logged at debug level for transparency
+  - Improves reasoning quality for complex clinical decision-making tasks
+
 ## [0.5.37] - 2025-11-23 21:40:00
 
 ### Fixed
