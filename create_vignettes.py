@@ -555,6 +555,90 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     # Return trend with values, change, and percentage change (no binning labels)
     return f"{trend} (from {previous_str} to {current_str} with change {absolute_change_str} with percentage change {percent_change_str})"
 
+def find_last_available_value(row: pd.Series, var: str, current_day: int, df: pd.DataFrame) -> Tuple[Optional[float], Optional[int]]:
+    """Find the last available value for a variable going backwards from current_day to day 1.
+    
+    Returns:
+        Tuple of (value, source_day) where source_day is the day the value came from.
+        Returns (None, None) if no value is found.
+    """
+    for day in range(current_day, 0, -1):
+        day_col = f"{var}_day_{day}"
+        if day_col in df.columns:
+            value = row[day_col]
+            if not pd.isna(value):
+                return float(value), day
+    return None, None
+
+def fill_missing_values_from_previous_days(vignettes_df: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
+    """Fill missing values in vignettes by looking backwards to previous days.
+    
+    For each vignette at day i, if a variable value is missing, look backwards
+    to day i-1, i-2, etc. until day 1. Store the source day for each value.
+    Only set source_day when value comes from a previous day (not current day).
+    """
+    logger.info("Filling missing values from previous days...")
+    
+    continuous_vars = list(BINNING_THRESHOLDS.keys())
+    
+    # Initialize source_day columns
+    for var in continuous_vars:
+        source_day_col = f"{var}_source_day"
+        if source_day_col not in vignettes_df.columns:
+            vignettes_df[source_day_col] = None
+    
+    # Process each vignette row
+    for idx, vignette_row in vignettes_df.iterrows():
+        subject_id = vignette_row['subject_id']
+        current_day = int(vignette_row['day'])
+        
+        # Get the original row from df for this subject
+        subject_rows = df[df['subject_id'] == subject_id]
+        if len(subject_rows) == 0:
+            continue
+        original_row = subject_rows.iloc[0]
+        
+        # For each continuous variable
+        for var in continuous_vars:
+            binned_col = f"{var}_binned"
+            value_col = f"{var}_value"
+            source_day_col = f"{var}_source_day"
+            
+            # Check if value exists for current day in original data
+            current_day_col = f"{var}_day_{current_day}"
+            current_day_has_value = False
+            if current_day_col in df.columns:
+                current_day_value = original_row[current_day_col]
+                if pd.notna(current_day_value):
+                    current_day_has_value = True
+            
+            # If value is missing in vignette, look backwards
+            if pd.isna(vignette_row.get(value_col)):
+                if current_day_has_value:
+                    # Current day has value - should have been set initially, set it now
+                    current_day_value = float(original_row[current_day_col])
+                    binned = bin_continuous_value(current_day_value, var)
+                    value_rounded = round(current_day_value, 2)
+                    vignettes_df.at[idx, value_col] = value_rounded
+                    vignettes_df.at[idx, binned_col] = binned
+                    # source_day stays None (value is from current day)
+                else:
+                    # Look backwards from current_day - 1 to day 1
+                    value, source_day = find_last_available_value(original_row, var, current_day - 1, df)
+                    
+                    if value is not None and source_day is not None:
+                        # Update the value and binned label
+                        binned = bin_continuous_value(value, var)
+                        value_rounded = round(value, 2)
+                        
+                        vignettes_df.at[idx, value_col] = value_rounded
+                        vignettes_df.at[idx, binned_col] = binned
+                        vignettes_df.at[idx, source_day_col] = source_day
+                    # else: leave as None (no value found anywhere)
+    
+    logger.info("Completed filling missing values from previous days")
+    return vignettes_df
+
 def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     """Create clinical vignettes for each patient-day combination."""
     logger.info("Creating clinical vignettes...")
@@ -698,6 +782,9 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Removed {removed_count} rows with all empty continuous variables")
     logger.info(f"Remaining vignettes: {len(vignettes_df)}")
     
+    # Fill missing values from previous days (AFTER filtering)
+    vignettes_df = fill_missing_values_from_previous_days(vignettes_df, df)
+    
     # Create comprehensive clinical vignette text
     logger.info("Creating comprehensive clinical vignettes...")
     vignettes_df['patient_day_vignette'] = vignettes_df.apply(create_comprehensive_vignette, axis=1)
@@ -736,20 +823,28 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
     continuous_vars = [var for var in BINNING_THRESHOLDS.keys() if f"{var}_binned" in row.index]
     
     lab_parts = []
+    current_day = int(row['day'])
     for var in continuous_vars:
         var_name = var.replace('_', ' ')
         binned = row.get(f"{var}_binned")
         value = row.get(f"{var}_value")
+        source_day = row.get(f"{var}_source_day")
         
         if pd.notna(binned):
             if pd.notna(value):
                 # Get unit from BINNING_THRESHOLDS
                 unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
                 value_rounded = round(float(value), 2)
+                
+                # Add source day information if value is from a previous day
+                source_day_text = ""
+                if pd.notna(source_day) and int(source_day) != current_day:
+                    source_day_text = f" (from day {int(source_day)})"
+                
                 if unit:
-                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
                 else:
-                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
     
@@ -834,20 +929,28 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     
     # Laboratory values section (only agent's assigned variables)
     lab_parts = []
+    current_day = int(row['day'])
     for var in agent_vars['continuous']:
         var_name = var.replace('_', ' ')
         binned = row.get(f"{var}_binned")
         value = row.get(f"{var}_value")
+        source_day = row.get(f"{var}_source_day")
         
         if pd.notna(binned):
             if pd.notna(value):
                 # Get unit from BINNING_THRESHOLDS
                 unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
                 value_rounded = round(float(value), 2)
+                
+                # Add source day information if value is from a previous day
+                source_day_text = ""
+                if pd.notna(source_day) and int(source_day) != current_day:
+                    source_day_text = f" (from day {int(source_day)})"
+                
                 if unit:
-                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
                 else:
-                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()})")
+                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
     
