@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.74.1",
     "azure-identity>=1.25.1",
     "langchain-core>=1.0.5",
     "langchain-openai>=1.0.3",
