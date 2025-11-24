@@ -797,6 +797,8 @@ def main():
                         help='Number of patients to process (default: all patients)')
     parser.add_argument('--day', type=int, default=None,
                         help='Specific day to process (default: maximum day for each patient)')
+    parser.add_argument('--patient_id', type=int, nargs='+', default=None,
+                        help='Specific patient ID(s) to process (default: all patients). Can specify multiple IDs separated by spaces.')
     
     args = parser.parse_args()
     
@@ -834,6 +836,11 @@ def main():
         # Filter to keep only rows where day matches the target day
         df = df[df['day'] == df['target_day']].drop(columns=['max_day', 'target_day'])
         logger.info(f"Filtered to target day per patient (specified: {args.day}, clamped to [1, max_day] per patient): {len(df)} patient-day combinations")
+    
+    # Filter by specific patient IDs if specified
+    if args.patient_id is not None:
+        df = df[df['subject_id'].isin(args.patient_id)]
+        logger.info(f"Filtered to patient IDs {args.patient_id}: {len(df)} patient-day combinations")
     
     # Filter by number of patients if specified
     if args.num_patient is not None:

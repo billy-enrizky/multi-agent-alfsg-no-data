@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.41] - 2025-11-24 14:38:00
+
+### Added
+
+- **Patient-Specific Testing Capability**
+  - Added `--patient_id` argument to `multi_agent_system.py` to enable testing specific patients
+  - Supports multiple patient IDs: `--patient_id 1185 1231` (space-separated)
+  - Works in combination with `--day` argument for precise patient-day testing
+  - Example usage: `uv run python multi_agent_system.py --patient_id 1185 --day 7`
+  - Improves debugging and analysis by allowing targeted patient predictions
+
+- **Prediction Differences Analysis Documentation**
+  - Created `prediction_differences_analysis.md` documenting comparison between two prediction runs
+  - Analyzed differences in predictions for patients 1185 and 1231
+  - Verified that clinical vignette inputs are identical between commits (all 12,936 rows)
+  - Documented root cause: non-deterministic LLM behavior when seed parameter is not used
+  - Provides recommendations for improving reproducibility (seed usage, chain-of-thought prompting)
+
+- **Chain-of-Thought Prompting Examples**
+  - Created `chain_of_thought_example.md` with examples of enhanced prompting strategies
+  - Includes step-by-step reasoning prompts for clinical decision-making
+  - Provides alternative implementation approaches (structured steps vs. JSON format)
+  - Documents benefits: more consistent reasoning, reduced bias, better traceability
+  - Includes code examples for implementing chain-of-thought in agent functions
+
+### Changed
+
+- **Enhanced Multi-Agent System Command-Line Interface**
+  - `--patient_id` argument now filters patients before other filters (`--day`, `--num_patient`)
+  - Improved logging to show patient ID filtering steps
+  - Maintains backward compatibility with existing command-line usage
+
 ## [0.5.40] - 2025-11-23 23:00:00
 
 ### Changed
