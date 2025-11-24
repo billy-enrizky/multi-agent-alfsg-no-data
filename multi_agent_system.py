@@ -122,9 +122,29 @@ def call_llm(client, client_type: str, deployment_name: str, system_prompt: str,
                 logger.warning(f"Anthropic structured outputs failed, falling back to manual parsing: {e}")
                 # Fallback to manual JSON parsing
                 json_schema = json_schema_model.model_json_schema()
+                
+                # Determine the correct field name based on the model
+                # AgentDecision uses "decision", FinalPrediction uses "prediction"
+                if json_schema_model == FinalPrediction:
+                    decision_field = "prediction"
+                else:
+                    decision_field = "decision"
+                
                 user_prompt = f"""{user_prompt}
 
-Please respond with a JSON object matching this schema:
+You must respond with a JSON object containing these exact fields:
+- "{decision_field}": either "Yes" or "No" (string)
+- "confidence": a number between 0.0 and 1.0 (float)
+- "reasoning": a detailed explanation (string)
+
+Example JSON format:
+{{
+  "{decision_field}": "Yes",
+  "confidence": 0.85,
+  "reasoning": "Your detailed reasoning here"
+}}
+
+Full JSON schema for reference:
 {json.dumps(json_schema, indent=2)}
 
 Return only valid JSON, no additional text."""
@@ -204,16 +224,23 @@ Return only valid JSON, no additional text."""
                 # Extract just the properties we need
                 properties = json_schema.get('properties', {})
                 
+                # Determine the correct field name based on the model
+                # AgentDecision uses "decision", FinalPrediction uses "prediction"
+                if json_schema_model == FinalPrediction:
+                    decision_field = "prediction"
+                else:
+                    decision_field = "decision"
+                
                 user_prompt_with_json = f"""{user_prompt}
 
 You must respond with a JSON object containing these exact fields:
-- "decision": either "Yes" or "No" (string)
+- "{decision_field}": either "Yes" or "No" (string)
 - "confidence": a number between 0.0 and 1.0 (float)
 - "reasoning": a detailed explanation (string)
 
 Example JSON format:
 {{
-  "decision": "Yes",
+  "{decision_field}": "Yes",
   "confidence": 0.85,
   "reasoning": "Your detailed reasoning here"
 }}
@@ -661,6 +688,12 @@ Provide your final synthesis and prediction."""
                 logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
             
             response_json = json.loads(response_text)
+            
+            # Handle case where LLM returns "decision" instead of "prediction" (for FinalPrediction)
+            if "decision" in response_json and "prediction" not in response_json:
+                logger.warning("LLM returned 'decision' instead of 'prediction', converting...")
+                response_json["prediction"] = response_json.pop("decision")
+            
             prediction = FinalPrediction(**response_json)
         
         # Override with calculated values
