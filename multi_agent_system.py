@@ -90,20 +90,32 @@ def call_llm(client, client_type: str, deployment_name: str, system_prompt: str,
         Otherwise: Returns response text as string
     """
     if client_type == "anthropic":
+        # Check if using claude-opus-4-1 and enable extended thinking
+        use_thinking = (deployment_name == "claude-opus-4-1")
+        
         # Anthropic API - Use native structured outputs when available
         if json_mode and json_schema_model:
             try:
                 # Use beta.messages.parse() for native structured outputs (returns parsed Pydantic model directly)
-                response = client.beta.messages.parse(
-                    model=deployment_name,
-                    max_tokens=16384,
-                    betas=["structured-outputs-2025-11-13"],
-                    system=system_prompt,
-                    messages=[
+                parse_kwargs = {
+                    "model": deployment_name,
+                    "max_tokens": 16384,  # Must be > thinking.budget_tokens (10000)
+                    "betas": ["structured-outputs-2025-11-13"],
+                    "system": system_prompt,
+                    "messages": [
                         {"role": "user", "content": user_prompt}
                     ],
-                    output_format=json_schema_model,
-                )
+                    "output_format": json_schema_model,
+                }
+                
+                # Add thinking parameter for claude-opus-4-1
+                if use_thinking:
+                    parse_kwargs["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": 10000
+                    }
+                
+                response = client.beta.messages.parse(**parse_kwargs)
                 # Return the parsed Pydantic model directly
                 return response.parsed_output
             except Exception as e:
@@ -118,23 +130,44 @@ Please respond with a JSON object matching this schema:
 Return only valid JSON, no additional text."""
         
         # Regular message creation (for non-JSON mode or fallback)
-        message = client.messages.create(
-            model=deployment_name,
-            system=system_prompt,
-            messages=[
+        create_kwargs = {
+            "model": deployment_name,
+            "system": system_prompt,
+            "messages": [
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=16384,
-        )
+            "max_tokens": 16384,  # Must be > thinking.budget_tokens (10000)
+        }
+        
+        # Add thinking parameter for claude-opus-4-1
+        if use_thinking:
+            create_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": 10000
+            }
+        
+        message = client.messages.create(**create_kwargs)
         
         # Extract text from Anthropic response (list of content blocks)
         if not message.content:
             logger.error("Anthropic response has no content")
             return ""
         
-        # Handle different content block types
+        # Handle different content block types (including thinking blocks)
         response_text = ""
         for block in message.content:
+            # Handle thinking blocks (extended thinking feature)
+            if hasattr(block, 'type'):
+                if block.type == "thinking":
+                    # Thinking blocks contain summarized thinking - we can log but don't include in response
+                    if hasattr(block, 'thinking'):
+                        logger.debug(f"Thinking summary: {block.thinking}")
+                    continue
+                elif block.type == "text":
+                    if hasattr(block, 'text'):
+                        response_text += block.text
+                    continue
+            # Fallback for other block types
             if hasattr(block, 'text'):
                 response_text += block.text
             elif isinstance(block, dict) and 'text' in block:
