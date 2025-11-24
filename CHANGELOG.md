@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.39] - 2025-11-23 22:00:00
+
+### Fixed
+
+- **OpenAI GPT-5 and Anthropic Opus 4.1 FinalPrediction Field Name Mismatch**
+  - Fixed Pydantic validation error where `FinalPrediction` model expected `"prediction"` field but LLM was returning `"decision"`
+  - Updated `call_llm()` function to detect model type and use correct field name in JSON prompt for both OpenAI and Anthropic
+  - `FinalPrediction` model now correctly prompts for `"prediction"` field (instead of `"decision"`)
+  - `AgentDecision` model continues to use `"decision"` field as before
+  - **OpenAI**: Explicit field name instructions added to JSON prompt with examples
+  - **Anthropic**: Same explicit field name instructions added to fallback prompt (when native structured outputs fail)
+  - Both APIs now use consistent Pydantic schema and explicit field instructions
+  - Added fallback in `final_synthesis()` to automatically convert `"decision"` to `"prediction"` if LLM still returns wrong field name
+  - Resolves "Field required [type=missing, input_value={'decision': ...}]" validation error for FinalPrediction
+  - Ensures proper field name mapping for both individual agent decisions and final committee predictions across all API providers
+
 ## [0.5.36] - 2025-11-23 21:00:00
 
 ### Changed
