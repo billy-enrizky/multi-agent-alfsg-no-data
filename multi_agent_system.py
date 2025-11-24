@@ -114,6 +114,9 @@ def call_llm(client, client_type: str, deployment_name: str, system_prompt: str,
                         "type": "enabled",
                         "budget_tokens": 10000
                     }
+                    parse_kwargs["temperature"] = 1  # Must be 1 when thinking is enabled
+                else:
+                    parse_kwargs["temperature"] = 0  # Use 0 for deterministic outputs when thinking is disabled
                 
                 response = client.beta.messages.parse(**parse_kwargs)
                 # Return the parsed Pydantic model directly
@@ -165,6 +168,9 @@ Return only valid JSON, no additional text."""
                 "type": "enabled",
                 "budget_tokens": 10000
             }
+            create_kwargs["temperature"] = 1  # Must be 1 when thinking is enabled
+        else:
+            create_kwargs["temperature"] = 0  # Use 0 for deterministic outputs when thinking is disabled
         
         message = client.messages.create(**create_kwargs)
         
@@ -260,6 +266,7 @@ Please respond with a valid JSON object. Return only JSON, no additional text.""
                 ],
                 response_format={"type": "json_object"},
                 max_completion_tokens=16384,
+                seed=42,  # Use seed for deterministic outputs (GPT-5 doesn't support temperature=0)
             )
         else:
             completion = client.chat.completions.create(
@@ -269,6 +276,7 @@ Please respond with a valid JSON object. Return only JSON, no additional text.""
                     {"role": "user", "content": user_prompt}
                 ],
                 max_completion_tokens=16384,
+                seed=42,  # Use seed for deterministic outputs (GPT-5 doesn't support temperature=0)
             )
         
         response_text = completion.choices[0].message.content

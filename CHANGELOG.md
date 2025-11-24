@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.40] - 2025-11-23 23:00:00
+
+### Changed
+
+- **Deterministic Output Configuration for OpenAI and Anthropic APIs**
+  - **OpenAI/GPT-5**: Added `seed=42` parameter to all OpenAI API calls for deterministic outputs
+    - GPT-5 does not support `temperature=0` (only default value of 1.0 is supported)
+    - Using `seed` parameter provides deterministic, reproducible outputs for identical inputs
+    - Applied to both JSON mode and regular mode API calls in `call_llm()` function
+    - Updated `test_azure.py` to use `seed=42` instead of `temperature=0`
+  - **Anthropic/Claude Opus 4.1**: Added `temperature` parameter with conditional logic
+    - `temperature=0` when extended thinking is disabled (for deterministic outputs)
+    - `temperature=1` when extended thinking is enabled (required by API - cannot be 0 with thinking)
+    - Applied to both `beta.messages.parse()` (structured outputs) and `messages.create()` (regular messages)
+    - Updated `test_opus.py` to use appropriate temperature values based on thinking configuration
+  - Ensures consistent, reproducible outputs across all API providers while respecting each API's constraints
+  - Improves debugging and evaluation by providing deterministic responses for the same inputs
+
 ## [0.5.39] - 2025-11-23 22:00:00
 
 ### Fixed
