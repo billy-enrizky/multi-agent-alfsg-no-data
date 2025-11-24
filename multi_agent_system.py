@@ -3,10 +3,11 @@ import json
 import logging
 import argparse
 import pandas as pd
-from typing import Literal, TypedDict, Optional
+from typing import Literal, TypedDict, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from openai import OpenAI
+from anthropic import AnthropicFoundry
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,24 +42,127 @@ class AgentState(TypedDict):
     final_prediction: FinalPrediction | None
 
 def get_azure_openai_client():
-    """Initialize Azure OpenAI client with API key authentication."""
+    """Initialize client (OpenAI or Anthropic Foundry) based on deployment name."""
     endpoint = os.getenv("ENDPOINT_URL")
-    model_name = "gpt-5"
     deployment_name = os.getenv("DEPLOYMENT_NAME")
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")
     
     if not endpoint:
         raise ValueError("ENDPOINT_URL environment variable is required")
-    if not api_key:
-        raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
+    if not deployment_name:
+        raise ValueError("DEPLOYMENT_NAME environment variable is required")
     
-    client = OpenAI(
-        base_url=f"{endpoint}",
-        api_key=api_key
-    )
-    
-    return client, deployment_name
+    # Check if using Anthropic Foundry
+    if deployment_name == "claude-opus-4-1":
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required for Anthropic Foundry")
+        client = AnthropicFoundry(
+            api_key=api_key,
+            base_url=endpoint
+        )
+        return client, deployment_name, "anthropic"
+    else:
+        # Default to OpenAI
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
+        client = OpenAI(
+            base_url=f"{endpoint}",
+            api_key=api_key
+        )
+        return client, deployment_name, "openai"
 
+
+def call_llm(client, client_type: str, deployment_name: str, system_prompt: str, user_prompt: str, json_mode: bool = False, json_schema_model=None):
+    """Unified function to call either OpenAI or Anthropic API.
+    
+    Args:
+        client: The client instance (OpenAI or AnthropicFoundry)
+        client_type: "openai" or "anthropic"
+        deployment_name: Model/deployment name
+        system_prompt: System prompt
+        user_prompt: User prompt
+        json_mode: Whether to request JSON output
+        json_schema_model: Pydantic model for JSON schema (AgentDecision or FinalPrediction)
+    """
+    if client_type == "anthropic":
+        # Anthropic API
+        if json_mode and json_schema_model:
+            json_schema = json_schema_model.model_json_schema()
+            user_prompt = f"""{user_prompt}
+
+Please respond with a JSON object matching this schema:
+{json.dumps(json_schema, indent=2)}
+
+Return only valid JSON, no additional text."""
+        
+        message = client.messages.create(
+            model=deployment_name,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=16384,
+        )
+        
+        # Extract text from Anthropic response (list of content blocks)
+        if not message.content:
+            logger.error("Anthropic response has no content")
+            return ""
+        
+        # Handle different content block types
+        response_text = ""
+        for block in message.content:
+            if hasattr(block, 'text'):
+                response_text += block.text
+            elif isinstance(block, dict) and 'text' in block:
+                response_text += block['text']
+            elif isinstance(block, str):
+                response_text += block
+        
+        if not response_text:
+            logger.error(f"Anthropic response content is empty. Content structure: {message.content}")
+            return ""
+        
+        # Extract JSON from markdown code blocks if present (Anthropic often wraps JSON in ```json ... ```)
+        response_text = response_text.strip()
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            if end > start:
+                response_text = response_text[start:end].strip()
+        elif "```" in response_text:
+            # Handle generic code blocks
+            start = response_text.find("```") + 3
+            end = response_text.find("```", start)
+            if end > start:
+                response_text = response_text[start:end].strip()
+        
+        return response_text
+    else:
+        # OpenAI API
+        if json_mode:
+            completion = client.chat.completions.create(
+                model=deployment_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"},
+                max_completion_tokens=16384,
+            )
+        else:
+            completion = client.chat.completions.create(
+                model=deployment_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_completion_tokens=16384,
+            )
+        
+        response_text = completion.choices[0].message.content
+        return response_text
 
 def hepatologist_agent(state: AgentState) -> AgentState:
     """AI Hepatologist agent node."""
@@ -80,56 +184,48 @@ Consider:
 
 Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
-    prompt = f"""{system_prompt}
-
-Clinical Vignette:
+    prompt = f"""Clinical Vignette:
 {vignette}
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment_name = get_azure_openai_client()
+        client, deployment_name, client_type = get_azure_openai_client()
         
-        # Use JSON mode for structured output
-        json_schema = AgentDecision.model_json_schema()
-        json_prompt = f"""{prompt}
-
-Please respond with a JSON object matching this schema:
-{json_schema}
-
-Return only valid JSON, no additional text."""
+        # Try JSON mode first
+        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        completion = client.chat.completions.create(
-            model=deployment_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json_prompt}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=16384,
-        )
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        response_text = completion.choices[0].message.content
+        # Try to extract JSON from response (in case there's extra text)
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            response_text = response_text[json_start:json_end]
+        else:
+            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+        
         response_json = json.loads(response_text)
         decision = AgentDecision(**response_json)
         
         state['hepatologist_output'] = decision
         logger.info(f"Hepatologist decision: {decision.decision}")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in Hepatologist agent: {e}")
+        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        raise
     except Exception as e:
         logger.error(f"Error in Hepatologist agent: {e}")
         # Fallback to basic completion
         try:
-            client, deployment_name = get_azure_openai_client()
-            completion = client.chat.completions.create(
-                model=deployment_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_completion_tokens=16384,
-            )
-            response_text = completion.choices[0].message.content
+            client, deployment_name, client_type = get_azure_openai_client()
+            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             # Parse response manually
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
             # Extract confidence if mentioned, otherwise default to 0.7
@@ -181,55 +277,47 @@ Consider:
 
 Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
-    prompt = f"""{system_prompt}
-
-Clinical Vignette:
+    prompt = f"""Clinical Vignette:
 {vignette}
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment_name = get_azure_openai_client()
+        client, deployment_name, client_type = get_azure_openai_client()
         
-        # Use JSON mode for structured output
-        json_schema = AgentDecision.model_json_schema()
-        json_prompt = f"""{prompt}
-
-Please respond with a JSON object matching this schema:
-{json_schema}
-
-Return only valid JSON, no additional text."""
+        # Try JSON mode first
+        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        completion = client.chat.completions.create(
-            model=deployment_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json_prompt}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=16384,
-        )
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        response_text = completion.choices[0].message.content
+        # Try to extract JSON from response (in case there's extra text)
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            response_text = response_text[json_start:json_end]
+        else:
+            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+        
         response_json = json.loads(response_text)
         decision = AgentDecision(**response_json)
         
         state['critical_care_output'] = decision
         logger.info(f"Critical Care decision: {decision.decision}")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in Critical Care agent: {e}")
+        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        raise
     except Exception as e:
         logger.error(f"Error in Critical Care agent: {e}")
         try:
-            client, deployment_name = get_azure_openai_client()
-            completion = client.chat.completions.create(
-                model=deployment_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_completion_tokens=16384,
-            )
-            response_text = completion.choices[0].message.content
+            client, deployment_name, client_type = get_azure_openai_client()
+            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
             # Extract confidence if mentioned, otherwise default to 0.7
             confidence_val = 0.7
@@ -280,55 +368,47 @@ Consider:
 
 Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
 
-    prompt = f"""{system_prompt}
-
-Clinical Vignette:
+    prompt = f"""Clinical Vignette:
 {vignette}
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
     try:
-        client, deployment_name = get_azure_openai_client()
+        client, deployment_name, client_type = get_azure_openai_client()
         
-        # Use JSON mode for structured output
-        json_schema = AgentDecision.model_json_schema()
-        json_prompt = f"""{prompt}
-
-Please respond with a JSON object matching this schema:
-{json_schema}
-
-Return only valid JSON, no additional text."""
+        # Try JSON mode first
+        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        completion = client.chat.completions.create(
-            model=deployment_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json_prompt}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=16384,
-        )
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        response_text = completion.choices[0].message.content
+        # Try to extract JSON from response (in case there's extra text)
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            response_text = response_text[json_start:json_end]
+        else:
+            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+        
         response_json = json.loads(response_text)
         decision = AgentDecision(**response_json)
         
         state['transplant_surgeon_output'] = decision
         logger.info(f"Transplant Surgeon decision: {decision.decision}")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in Transplant Surgeon agent: {e}")
+        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        raise
     except Exception as e:
         logger.error(f"Error in Transplant Surgeon agent: {e}")
         try:
-            client, deployment_name = get_azure_openai_client()
-            completion = client.chat.completions.create(
-                model=deployment_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_completion_tokens=16384,
-            )
-            response_text = completion.choices[0].message.content
+            client, deployment_name, client_type = get_azure_openai_client()
+            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
             # Extract confidence if mentioned, otherwise default to 0.7
             confidence_val = 0.7
@@ -417,28 +497,26 @@ Weighted Analysis:
 Provide your final synthesis and prediction."""
 
     try:
-        client, deployment_name = get_azure_openai_client()
+        client, deployment_name, client_type = get_azure_openai_client()
         
         # Use JSON mode for structured output
-        json_schema = FinalPrediction.model_json_schema()
-        json_prompt = f"""{prompt}
-
-Please respond with a JSON object matching this schema:
-{json_schema}
-
-Return only valid JSON, no additional text."""
+        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
         
-        completion = client.chat.completions.create(
-            model=deployment_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json_prompt}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=16384,
-        )
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        response_text = completion.choices[0].message.content
+        # Try to extract JSON from response (in case there's extra text)
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            response_text = response_text[json_start:json_end]
+        else:
+            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+        
         response_json = json.loads(response_text)
         prediction = FinalPrediction(**response_json)
         
@@ -449,6 +527,15 @@ Return only valid JSON, no additional text."""
         state['final_prediction'] = prediction
         logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in Final Synthesis: {e}")
+        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        # Fallback
+        state['final_prediction'] = FinalPrediction(
+            prediction=weighted_decision,
+            confidence=confidence,
+            reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. JSON parse error: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error in Final Synthesis: {e}")
         # Fallback

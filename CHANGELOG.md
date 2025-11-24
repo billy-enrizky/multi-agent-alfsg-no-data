@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.34] - 2025-11-23 20:00:00
+
+### Fixed
+
+- **Anthropic Foundry JSON Response Parsing**
+  - Fixed JSON parsing error when using Anthropic Foundry API
+  - Anthropic Foundry wraps JSON responses in markdown code blocks (```json ... ```)
+  - Updated `call_llm()` function to automatically extract JSON from markdown code blocks
+  - Added robust content block handling for Anthropic responses (handles different content block types)
+  - Added fallback JSON extraction in all agent functions to handle edge cases
+  - Improved error handling with detailed logging for JSON decode errors
+  - Resolves "Expecting value: line 1 column 1 (char 0)" error when parsing Anthropic responses
+
+## [0.5.33] - 2025-11-23 19:50:29
+
+### Added
+
+- **Anthropic Foundry Support**
+  - Added support for Anthropic Foundry API when `DEPLOYMENT_NAME` is set to `"claude-opus-4-1"`
+  - System automatically detects deployment name and uses appropriate client (OpenAI or Anthropic Foundry)
+  - Created unified `call_llm()` function to handle both OpenAI and Anthropic API calls
+  - Anthropic Foundry uses `ANTHROPIC_API_KEY` environment variable (instead of `AZURE_OPENAI_API_KEY`)
+  - Anthropic API differences handled:
+    - Uses `client.messages.create()` instead of `client.chat.completions.create()`
+    - System prompt passed as separate `system` parameter
+    - Response extracted from `message.content[0].text` (list of content blocks)
+    - Uses `max_tokens` instead of `max_completion_tokens`
+    - JSON mode handled via prompt instructions (no native `response_format` support)
+  - All agent functions (Hepatologist, Critical Care, Transplant Surgeon, Final Synthesis) now support both APIs
+  - Maintains backward compatibility with existing OpenAI/Azure OpenAI deployments
+
 ## [0.5.32] - 2025-11-23 16:38:48
 
 ### Changed
