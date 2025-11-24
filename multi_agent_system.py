@@ -164,11 +164,39 @@ Return only valid JSON, no additional text."""
     else:
         # OpenAI API
         if json_mode:
+            # OpenAI requires the word "json" in messages when using response_format={"type": "json_object"}
+            if json_schema_model:
+                # Get the properties we need, not the full schema
+                json_schema = json_schema_model.model_json_schema()
+                # Extract just the properties we need
+                properties = json_schema.get('properties', {})
+                
+                user_prompt_with_json = f"""{user_prompt}
+
+You must respond with a JSON object containing these exact fields:
+- "decision": either "Yes" or "No" (string)
+- "confidence": a number between 0.0 and 1.0 (float)
+- "reasoning": a detailed explanation (string)
+
+Example JSON format:
+{{
+  "decision": "Yes",
+  "confidence": 0.85,
+  "reasoning": "Your detailed reasoning here"
+}}
+
+Return only the JSON object, no additional text or explanation."""
+            else:
+                # Ensure "json" is in the prompt
+                user_prompt_with_json = f"""{user_prompt}
+
+Please respond with a valid JSON object. Return only JSON, no additional text."""
+            
             completion = client.chat.completions.create(
                 model=deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt_with_json}
                 ],
                 response_format={"type": "json_object"},
                 max_completion_tokens=16384,
@@ -238,8 +266,20 @@ Based on this clinical information, predict whether this patient will achieve sp
             else:
                 logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
             
-            response_json = json.loads(response_text)
-            decision = AgentDecision(**response_json)
+            try:
+                response_json = json.loads(response_text)
+                # Validate that we have the required fields before creating the model
+                required_fields = ['decision', 'confidence', 'reasoning']
+                if not all(field in response_json for field in required_fields):
+                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
+                    logger.error(f"Full response text: {response_text[:2000]}")
+                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
+                
+                decision = AgentDecision(**response_json)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse JSON response: {parse_error}")
+                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
+                raise
         
         state['hepatologist_output'] = decision
         logger.info(f"Hepatologist decision: {decision.decision}")
@@ -337,8 +377,20 @@ Based on this clinical information, predict whether this patient will achieve sp
             else:
                 logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
             
-            response_json = json.loads(response_text)
-            decision = AgentDecision(**response_json)
+            try:
+                response_json = json.loads(response_text)
+                # Validate that we have the required fields before creating the model
+                required_fields = ['decision', 'confidence', 'reasoning']
+                if not all(field in response_json for field in required_fields):
+                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
+                    logger.error(f"Full response text: {response_text[:2000]}")
+                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
+                
+                decision = AgentDecision(**response_json)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse JSON response: {parse_error}")
+                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
+                raise
         
         state['critical_care_output'] = decision
         logger.info(f"Critical Care decision: {decision.decision}")
@@ -434,8 +486,20 @@ Based on this clinical information, predict whether this patient will achieve sp
             else:
                 logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
             
-            response_json = json.loads(response_text)
-            decision = AgentDecision(**response_json)
+            try:
+                response_json = json.loads(response_text)
+                # Validate that we have the required fields before creating the model
+                required_fields = ['decision', 'confidence', 'reasoning']
+                if not all(field in response_json for field in required_fields):
+                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
+                    logger.error(f"Full response text: {response_text[:2000]}")
+                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
+                
+                decision = AgentDecision(**response_json)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse JSON response: {parse_error}")
+                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
+                raise
         
         state['transplant_surgeon_output'] = decision
         logger.info(f"Transplant Surgeon decision: {decision.decision}")

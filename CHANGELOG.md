@@ -20,6 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensures all vignettes have complete data by using the most recent available value when current day data is missing
   - Source day annotation only appears when value is from a previous day (not shown for current day values)
 
+## [0.5.37] - 2025-11-23 21:40:00
+
+### Fixed
+
+- **JSON Response Validation and Error Handling**
+  - Fixed Pydantic validation errors when model returns schema instead of data
+  - Improved prompt to use explicit field descriptions with example instead of full JSON schema
+  - Added validation to check required fields exist before creating Pydantic models
+  - Enhanced error logging to show actual response content when parsing fails
+  - Prevents "Field required" errors by validating JSON structure before model creation
+  - Applied to all agent functions (Hepatologist, Critical Care, Transplant Surgeon, Final Synthesis)
+
+## [0.5.36] - 2025-11-23 21:33:00
+
+### Fixed
+
+- **OpenAI JSON Mode Requirement**
+  - Fixed error when using OpenAI with `response_format={"type": "json_object"}`
+  - OpenAI requires the word "json" to be present in messages when using JSON response format
+  - Updated `call_llm()` function to automatically append JSON schema instructions to user prompt for OpenAI
+  - Ensures compliance with OpenAI API requirements while maintaining backward compatibility
+  - Resolves "messages must contain the word 'json'" error
+
 ## [0.5.35] - 2025-11-23 20:05:00
 
 ### Changed
