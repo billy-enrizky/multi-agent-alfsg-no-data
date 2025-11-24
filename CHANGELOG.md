@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.36] - 2025-11-23 21:00:00
+
+### Changed
+
+- **Backward-Fill Missing Values from Previous Days**
+  - After filtering out rows with all empty continuous variables, missing values are now filled by looking backwards to previous days
+  - For each vignette at day i, if a variable value is missing, the system searches backwards from day i-1 to day 1 to find the last available value
+  - Added `find_last_available_value()` function to search backwards through days
+  - Added `fill_missing_values_from_previous_days()` function to fill missing values after filtering
+  - Each filled value tracks its source day in `{var}_source_day` columns
+  - Vignette text now displays "(from day X)" annotation when a value comes from a previous day
+  - Applies to both comprehensive vignettes and agent-specific vignettes
+  - Ensures all vignettes have complete data by using the most recent available value when current day data is missing
+  - Source day annotation only appears when value is from a previous day (not shown for current day values)
+
 ## [0.5.35] - 2025-11-23 20:05:00
 
 ### Changed
