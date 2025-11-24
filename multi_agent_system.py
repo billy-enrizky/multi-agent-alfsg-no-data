@@ -7,7 +7,7 @@ from typing import Literal, TypedDict, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from openai import OpenAI
-from anthropic import AnthropicFoundry
+from anthropic import AnthropicFoundry, transform_schema
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -84,18 +84,40 @@ def call_llm(client, client_type: str, deployment_name: str, system_prompt: str,
         user_prompt: User prompt
         json_mode: Whether to request JSON output
         json_schema_model: Pydantic model for JSON schema (AgentDecision or FinalPrediction)
+    
+    Returns:
+        For Anthropic with json_mode=True and json_schema_model: Returns the parsed Pydantic model directly
+        Otherwise: Returns response text as string
     """
     if client_type == "anthropic":
-        # Anthropic API
+        # Anthropic API - Use native structured outputs when available
         if json_mode and json_schema_model:
-            json_schema = json_schema_model.model_json_schema()
-            user_prompt = f"""{user_prompt}
+            try:
+                # Use beta.messages.parse() for native structured outputs (returns parsed Pydantic model directly)
+                response = client.beta.messages.parse(
+                    model=deployment_name,
+                    max_tokens=16384,
+                    betas=["structured-outputs-2025-11-13"],
+                    system=system_prompt,
+                    messages=[
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    output_format=json_schema_model,
+                )
+                # Return the parsed Pydantic model directly
+                return response.parsed_output
+            except Exception as e:
+                logger.warning(f"Anthropic structured outputs failed, falling back to manual parsing: {e}")
+                # Fallback to manual JSON parsing
+                json_schema = json_schema_model.model_json_schema()
+                user_prompt = f"""{user_prompt}
 
 Please respond with a JSON object matching this schema:
 {json.dumps(json_schema, indent=2)}
 
 Return only valid JSON, no additional text."""
         
+        # Regular message creation (for non-JSON mode or fallback)
         message = client.messages.create(
             model=deployment_name,
             system=system_prompt,
@@ -193,32 +215,38 @@ Based on this clinical information, predict whether this patient will achieve sp
         client, deployment_name, client_type = get_azure_openai_client()
         
         # Try JSON mode first
-        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        if not response_text or not response_text.strip():
-            logger.error(f"Empty response from LLM. Client type: {client_type}")
-            raise ValueError("Empty response from LLM")
-        
-        # Try to extract JSON from response (in case there's extra text)
-        response_text = response_text.strip()
-        
-        # Try to find JSON object in response
-        json_start = response_text.find('{')
-        json_end = response_text.rfind('}') + 1
-        if json_start >= 0 and json_end > json_start:
-            response_text = response_text[json_start:json_end]
+        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+        if isinstance(response, AgentDecision):
+            decision = response
         else:
-            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-        
-        response_json = json.loads(response_text)
-        decision = AgentDecision(**response_json)
+            # Response is a string, need to parse it
+            response_text = response
+            if not response_text or not response_text.strip():
+                logger.error(f"Empty response from LLM. Client type: {client_type}")
+                raise ValueError("Empty response from LLM")
+            
+            # Try to extract JSON from response (in case there's extra text)
+            response_text = response_text.strip()
+            
+            # Try to find JSON object in response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                response_text = response_text[json_start:json_end]
+            else:
+                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+            
+            response_json = json.loads(response_text)
+            decision = AgentDecision(**response_json)
         
         state['hepatologist_output'] = decision
         logger.info(f"Hepatologist decision: {decision.decision}")
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error in Hepatologist agent: {e}")
-        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
         raise
     except Exception as e:
         logger.error(f"Error in Hepatologist agent: {e}")
@@ -286,32 +314,38 @@ Based on this clinical information, predict whether this patient will achieve sp
         client, deployment_name, client_type = get_azure_openai_client()
         
         # Try JSON mode first
-        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        if not response_text or not response_text.strip():
-            logger.error(f"Empty response from LLM. Client type: {client_type}")
-            raise ValueError("Empty response from LLM")
-        
-        # Try to extract JSON from response (in case there's extra text)
-        response_text = response_text.strip()
-        
-        # Try to find JSON object in response
-        json_start = response_text.find('{')
-        json_end = response_text.rfind('}') + 1
-        if json_start >= 0 and json_end > json_start:
-            response_text = response_text[json_start:json_end]
+        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+        if isinstance(response, AgentDecision):
+            decision = response
         else:
-            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-        
-        response_json = json.loads(response_text)
-        decision = AgentDecision(**response_json)
+            # Response is a string, need to parse it
+            response_text = response
+            if not response_text or not response_text.strip():
+                logger.error(f"Empty response from LLM. Client type: {client_type}")
+                raise ValueError("Empty response from LLM")
+            
+            # Try to extract JSON from response (in case there's extra text)
+            response_text = response_text.strip()
+            
+            # Try to find JSON object in response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                response_text = response_text[json_start:json_end]
+            else:
+                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+            
+            response_json = json.loads(response_text)
+            decision = AgentDecision(**response_json)
         
         state['critical_care_output'] = decision
         logger.info(f"Critical Care decision: {decision.decision}")
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error in Critical Care agent: {e}")
-        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
         raise
     except Exception as e:
         logger.error(f"Error in Critical Care agent: {e}")
@@ -377,32 +411,38 @@ Based on this clinical information, predict whether this patient will achieve sp
         client, deployment_name, client_type = get_azure_openai_client()
         
         # Try JSON mode first
-        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
         
-        if not response_text or not response_text.strip():
-            logger.error(f"Empty response from LLM. Client type: {client_type}")
-            raise ValueError("Empty response from LLM")
-        
-        # Try to extract JSON from response (in case there's extra text)
-        response_text = response_text.strip()
-        
-        # Try to find JSON object in response
-        json_start = response_text.find('{')
-        json_end = response_text.rfind('}') + 1
-        if json_start >= 0 and json_end > json_start:
-            response_text = response_text[json_start:json_end]
+        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+        if isinstance(response, AgentDecision):
+            decision = response
         else:
-            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-        
-        response_json = json.loads(response_text)
-        decision = AgentDecision(**response_json)
+            # Response is a string, need to parse it
+            response_text = response
+            if not response_text or not response_text.strip():
+                logger.error(f"Empty response from LLM. Client type: {client_type}")
+                raise ValueError("Empty response from LLM")
+            
+            # Try to extract JSON from response (in case there's extra text)
+            response_text = response_text.strip()
+            
+            # Try to find JSON object in response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                response_text = response_text[json_start:json_end]
+            else:
+                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+            
+            response_json = json.loads(response_text)
+            decision = AgentDecision(**response_json)
         
         state['transplant_surgeon_output'] = decision
         logger.info(f"Transplant Surgeon decision: {decision.decision}")
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error in Transplant Surgeon agent: {e}")
-        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
         raise
     except Exception as e:
         logger.error(f"Error in Transplant Surgeon agent: {e}")
@@ -500,25 +540,31 @@ Provide your final synthesis and prediction."""
         client, deployment_name, client_type = get_azure_openai_client()
         
         # Use JSON mode for structured output
-        response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
+        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
         
-        if not response_text or not response_text.strip():
-            logger.error(f"Empty response from LLM. Client type: {client_type}")
-            raise ValueError("Empty response from LLM")
-        
-        # Try to extract JSON from response (in case there's extra text)
-        response_text = response_text.strip()
-        
-        # Try to find JSON object in response
-        json_start = response_text.find('{')
-        json_end = response_text.rfind('}') + 1
-        if json_start >= 0 and json_end > json_start:
-            response_text = response_text[json_start:json_end]
+        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+        if isinstance(response, FinalPrediction):
+            prediction = response
         else:
-            logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-        
-        response_json = json.loads(response_text)
-        prediction = FinalPrediction(**response_json)
+            # Response is a string, need to parse it
+            response_text = response
+            if not response_text or not response_text.strip():
+                logger.error(f"Empty response from LLM. Client type: {client_type}")
+                raise ValueError("Empty response from LLM")
+            
+            # Try to extract JSON from response (in case there's extra text)
+            response_text = response_text.strip()
+            
+            # Try to find JSON object in response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                response_text = response_text[json_start:json_end]
+            else:
+                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
+            
+            response_json = json.loads(response_text)
+            prediction = FinalPrediction(**response_json)
         
         # Override with calculated values
         prediction.prediction = weighted_decision
@@ -529,7 +575,7 @@ Provide your final synthesis and prediction."""
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error in Final Synthesis: {e}")
-        logger.error(f"Response text that failed to parse: {response_text[:1000] if 'response_text' in locals() else 'N/A'}")
+        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
         # Fallback
         state['final_prediction'] = FinalPrediction(
             prediction=weighted_decision,

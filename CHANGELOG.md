@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.35] - 2025-11-23 20:05:00
+
+### Changed
+
+- **Anthropic Native Structured Outputs**
+  - Updated to use Anthropic's native structured outputs API (`beta.messages.parse()`) instead of manual JSON parsing
+  - Uses `transform_schema()` from Anthropic SDK to convert Pydantic models to Anthropic's schema format
+  - `call_llm()` now returns parsed Pydantic models directly when using Anthropic with structured outputs
+  - Eliminates need for manual JSON extraction from markdown code blocks
+  - Falls back to manual parsing if native structured outputs fail
+  - All agent functions updated to handle both parsed Pydantic models and string responses
+  - More reliable and cleaner implementation using Anthropic's official structured outputs feature
+
 ## [0.5.34] - 2025-11-23 20:00:00
 
 ### Fixed
