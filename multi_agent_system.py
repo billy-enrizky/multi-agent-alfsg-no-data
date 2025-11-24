@@ -276,7 +276,6 @@ Please respond with a valid JSON object. Return only JSON, no additional text.""
                     {"role": "user", "content": user_prompt}
                 ],
                 max_completion_tokens=16384,
-                seed=42,  # Use seed for deterministic outputs (GPT-5 doesn't support temperature=0)
             )
         
         response_text = completion.choices[0].message.content
