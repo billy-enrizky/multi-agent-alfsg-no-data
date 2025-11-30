@@ -5,6 +5,90 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.45] - 2025-11-30 03:26:18
+
+### Added
+
+- **Multi-Deployment Support with Deployment-Specific API Keys**
+  - Added `--deployment` command-line argument to specify which model deployment to use (default: `gpt-5`)
+  - Supported deployments:
+    - `gpt-5` → Uses `GPT5_ENDPOINT_URL` and `GPT5_AZURE_OPENAI_API_KEY`
+    - `gpt-4.1-mini` → Uses `GPT4_1_MINI_ENDPOINT_URL` and `GPT4_1_MINI_AZURE_OPENAI_API_KEY`
+    - `gpt-5-mini` → Uses `GPT5_MINI_ENDPOINT_URL` and `GPT5_MINI_AZURE_OPENAI_API_KEY`
+    - `claude-opus-4-1` → Uses `OPUS4_1_ENDPOINT_URL` and `OPUS4_1_ANTHROPIC_API_KEY`
+    - `claude-sonnet-4-5` → Uses `SONNET4_5_ENDPOINT_URL` and `SONNET4_5_ANTHROPIC_API_KEY`
+  - Updated `get_azure_openai_client()` function to accept optional `deployment_name` parameter
+  - Each deployment can have its own endpoint URL and API key configured in `.env` file
+  - Falls back to generic `AZURE_OPENAI_API_KEY` or `ANTHROPIC_API_KEY` if deployment-specific key not found
+
+  - **Usage Examples**
+    - Quick local test (default deployment `gpt-5`, process 1 patient):
+      - ```zsh
+        uv run python multi_agent_system.py --deployment gpt-5 --num_patient 1
+        ```
+    - Run a specific deployment with a single patient and specific day:
+      - ```zsh
+        uv run python multi_agent_system.py --deployment claude-opus-4-1 --patient_id 1185 --day 3 --num_patient 1
+        ```
+    - Loop through all supported deployments and run 1 patient each (zsh):
+      - ```zsh
+        for d in gpt-5 gpt-4.1-mini gpt-5-mini claude-opus-4-1 claude-sonnet-4-5; do
+          uv run python multi_agent_system.py --deployment $d --num_patient 1
+        done
+        ```
+    - Show the dynamic output filename (one file per deployment):
+      - ```zsh
+        ls -1 agent_predictions_*${d}*.xlsx
+        ```
+    - Use the `date` command to get the current timestamp (local time):
+      - ```zsh
+        date "+%Y-%m-%d %H:%M:%S"
+        ```
+    - Rename output to include timestamp to avoid overwriting:
+      - ```zsh
+        DEPLOYMENT=gpt-5
+        uv run python multi_agent_system.py --deployment $DEPLOYMENT --num_patient 1
+        TIMESTAMP=$(date "+%Y%m%d_%H%M%S")
+        mv "agent_predictions_${DEPLOYMENT}.xlsx" "agent_predictions_${DEPLOYMENT}_${TIMESTAMP}.xlsx"
+        ```
+    - Programmatically update the changelog heading timestamp (macOS zsh):
+      - ```zsh
+        sed -i '' "s/^## \[0.5.45\] - .*/## [0.5.45] - $(date '+%Y-%m-%d %H:%M:%S')/" CHANGELOG.md
+        git add CHANGELOG.md
+        git commit -m "docs(changelog): update timestamp to $(date '+%Y-%m-%d %H:%M:%S')"
+        ```
+
+### Changed
+
+- **Dynamic Output Filename Based on Deployment**
+  - Output filename now includes the deployment name: `agent_predictions_{deployment}.xlsx`
+  - Example: `agent_predictions_gpt-5.xlsx`, `agent_predictions_claude-opus-4-1.xlsx`
+  - Allows running multiple deployments without overwriting previous results
+
+## [0.5.45] - 2025-11-30 12:00:00
+
+### Added
+
+- **Multi-Deployment Support for Azure OpenAI and Anthropic Models**
+  - Added `--deployment` command-line argument to select which model to use
+  - Supported deployments: `gpt-5` (default), `gpt-4.1-mini`, `gpt-5-mini`, `claude-opus-4-1`, `claude-sonnet-4-5`
+  - Each deployment uses its own environment variable prefix for API keys and endpoints:
+    - `gpt-5` → `GPT5_ENDPOINT_URL`, `GPT5_AZURE_OPENAI_API_KEY`
+    - `gpt-4.1-mini` → `GPT4_1_MINI_ENDPOINT_URL`, `GPT4_1_MINI_AZURE_OPENAI_API_KEY`
+    - `gpt-5-mini` → `GPT5_MINI_ENDPOINT_URL`, `GPT5_MINI_AZURE_OPENAI_API_KEY`
+    - `claude-opus-4-1` → `OPUS4_1_ENDPOINT_URL`, `OPUS4_1_ANTHROPIC_API_KEY`
+    - `claude-sonnet-4-5` → `SONNET4_5_ENDPOINT_URL`, `SONNET4_5_ANTHROPIC_API_KEY`
+
+- **Dynamic Output Filenames**
+  - Output Excel files now include the deployment name: `agent_predictions_{deployment}.xlsx`
+  - Allows running multiple deployments without overwriting results
+
+### Changed
+
+- **Updated `get_azure_openai_client()` function**
+  - Added special case handling for Anthropic model name to environment variable prefix mapping
+  - Added fallback to generic API keys (`AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) if deployment-specific keys not found
+
 ## [0.5.44] - 2025-01-27 00:00:00
 
 ### Added
