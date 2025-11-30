@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.44] - 2025-01-27 00:00:00
+
+### Added
+
+- **Enhanced Prediction Output with Accuracy Metrics**
+  - Added `actual_survival_text` column to output Excel file: converts `Spont_Survival21` (1/0) to "Yes"/"No" format
+  - Added correctness columns for each agent and final prediction:
+    - `Final_Correct`: TRUE/FALSE if final prediction matches actual survival text
+    - `hepatologist_correct`: TRUE/FALSE if hepatologist decision matches actual survival text
+    - `critical_care_correct`: TRUE/FALSE if critical care physician decision matches actual survival text
+    - `transplant_surgeon_correct`: TRUE/FALSE if transplant surgeon decision matches actual survival text
+  - Added accuracy calculations and logging:
+    - Calculates accuracy for final prediction and each individual agent
+    - Logs accuracy metrics as percentages (e.g., "85.23%")
+    - Only includes predictions with valid ground truth data in accuracy calculations
+    - Accuracy metrics displayed in console output after processing completes
+  - Improves evaluation capabilities by providing direct correctness indicators and accuracy metrics for model performance assessment
+
 ## [0.5.43] - 2025-11-30 00:37:59
 
 ### Changed

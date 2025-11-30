@@ -309,9 +309,9 @@ Predict whether the patient will achieve **Spontaneous Survival (without transpl
 # Output Format
 You must strictly adhere to this JSON format:
 {
-  "prediction": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
-  "confidence_score": 0.0 to 1.0,
-  "clinical_reasoning": "Detailed explanation citing specific biomarkers (Phosphate, INR, Lactate) and KCC criteria."
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation citing specific biomarkers (Phosphate, INR, Lactate) and KCC criteria."
 }
 """
 
@@ -437,9 +437,9 @@ Predict whether the patient will achieve **Spontaneous Survival (without transpl
 # Output Format
 You must strictly adhere to this JSON format:
 {
-  "prediction": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
-  "confidence_score": 0.0 to 1.0,
-  "clinical_reasoning": "Detailed explanation focusing on neurological status (Ammonia, HE Grade), hemodynamic stability, and extra-hepatic organ support."
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation focusing on neurological status (Ammonia, HE Grade), hemodynamic stability, and extra-hepatic organ support."
 }
 """
 
@@ -562,9 +562,9 @@ Predict whether the patient will achieve **Spontaneous Survival (without transpl
 # Output Format
 You must strictly adhere to this JSON format:
 {
-  "prediction": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
-  "confidence_score": 0.0 to 1.0,
-  "clinical_reasoning": "Detailed explanation focusing on surgical criteria (KCC), hemostasis, and operative feasibility."
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation focusing on surgical criteria (KCC), hemostasis, and operative feasibility."
 }
 """
 
@@ -912,6 +912,9 @@ def main():
             critical_care = outputs['critical_care_output']
             transplant_surgeon = outputs['transplant_surgeon_output']
             
+            actual_survival_val = row.get('Spont_Survival21', None)
+            actual_survival_text = "Yes" if actual_survival_val == 1 else ("No" if actual_survival_val == 0 else None)
+            
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
@@ -927,11 +930,19 @@ def main():
                 'transplant_surgeon_decision': transplant_surgeon.decision if transplant_surgeon else None,
                 'transplant_surgeon_confidence': transplant_surgeon.confidence if transplant_surgeon else None,
                 'transplant_surgeon_reasoning': transplant_surgeon.reasoning if transplant_surgeon else None,
-                'actual_survival': row.get('Spont_Survival21', None)
+                'actual_survival': actual_survival_val,
+                'actual_survival_text': actual_survival_text,
+                'Final_Correct': (final_pred.prediction == actual_survival_text) if (final_pred and actual_survival_text) else None,
+                'hepatologist_correct': (hepatologist.decision == actual_survival_text) if (hepatologist and actual_survival_text) else None,
+                'critical_care_correct': (critical_care.decision == actual_survival_text) if (critical_care and actual_survival_text) else None,
+                'transplant_surgeon_correct': (transplant_surgeon.decision == actual_survival_text) if (transplant_surgeon and actual_survival_text) else None
             })
             logger.info(f"Final Prediction: {final_pred.prediction if final_pred else 'N/A'} (confidence: {final_pred.confidence if final_pred else 0.0:.2f})")
         except Exception as e:
             logger.error(f"Error processing row {idx}: {e}")
+            actual_survival_val = row.get('Spont_Survival21', None)
+            actual_survival_text = "Yes" if actual_survival_val == 1 else ("No" if actual_survival_val == 0 else None)
+            
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
@@ -947,11 +958,36 @@ def main():
                 'transplant_surgeon_decision': None,
                 'transplant_surgeon_confidence': None,
                 'transplant_surgeon_reasoning': None,
-                'actual_survival': row.get('Spont_Survival21', None)
+                'actual_survival': actual_survival_val,
+                'actual_survival_text': actual_survival_text,
+                'Final_Correct': None,
+                'hepatologist_correct': None,
+                'critical_care_correct': None,
+                'transplant_surgeon_correct': None
             })
     
     # Always save results to Excel file
     results_df = pd.DataFrame(results)
+    
+    # Calculate accuracy metrics
+    # Filter out rows where actual_survival_text is None (no ground truth available)
+    valid_df = results_df[results_df['actual_survival_text'].notna()].copy()
+    
+    if len(valid_df) > 0:
+        # Calculate accuracy for each agent and final prediction
+        final_accuracy = valid_df['Final_Correct'].sum() / len(valid_df) if 'Final_Correct' in valid_df.columns else 0.0
+        hepatologist_accuracy = valid_df['hepatologist_correct'].sum() / len(valid_df) if 'hepatologist_correct' in valid_df.columns else 0.0
+        critical_care_accuracy = valid_df['critical_care_correct'].sum() / len(valid_df) if 'critical_care_correct' in valid_df.columns else 0.0
+        transplant_surgeon_accuracy = valid_df['transplant_surgeon_correct'].sum() / len(valid_df) if 'transplant_surgeon_correct' in valid_df.columns else 0.0
+        
+        logger.info(f"\nAccuracy Metrics (based on {len(valid_df)} predictions with ground truth):")
+        logger.info(f"  Final Prediction Accuracy: {final_accuracy:.4f} ({final_accuracy*100:.2f}%)")
+        logger.info(f"  Hepatologist Accuracy: {hepatologist_accuracy:.4f} ({hepatologist_accuracy*100:.2f}%)")
+        logger.info(f"  Critical Care Physician Accuracy: {critical_care_accuracy:.4f} ({critical_care_accuracy*100:.2f}%)")
+        logger.info(f"  Transplant Surgeon Accuracy: {transplant_surgeon_accuracy:.4f} ({transplant_surgeon_accuracy*100:.2f}%)")
+    else:
+        logger.warning("No valid ground truth data available for accuracy calculation")
+    
     output_file = 'agent_predictions.xlsx'
     results_df.to_excel(output_file, index=False, engine='openpyxl')
     logger.info(f"\nSaved predictions to {output_file}")
