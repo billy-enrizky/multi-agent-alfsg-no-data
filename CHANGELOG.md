@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.43] - 2025-11-30 00:37:59
+
+### Changed
+
+- **Enhanced Agent System Prompts with Clinical Knowledge Base**
+  - Significantly improved system prompts for all three specialist agents with domain-specific clinical guidelines
+  - **AI Hepatologist**: Enhanced with detailed knowledge base focusing on:
+    - Regeneration vs. Necrosis markers (Phosphate > 5.0 mg/dL indicates failure, < 2.5 mg/dL suggests regeneration)
+    - Synthetic function markers (INR > 6.5 as critical KCC threshold)
+    - King's College Criteria evaluation (Single Criterion: pH < 7.30; Triad: INR > 6.5 AND Creatinine > 3.4 AND Encephalopathy Grade III/IV)
+    - N-Acetylcysteine (NAC) timing considerations
+    - Data interpretation guide for ALT and Bilirubin in APAP overdose context
+  - **AI Critical Care Physician**: Enhanced with neuro-critical care focus:
+    - Neurological risk assessment (Arterial Ammonia thresholds: > 150 µmol/L High Risk, > 200 µmol/L Critical Risk)
+    - Neuroprotective strategy (Sodium therapeutic range 145–154 mEq/L, hyponatremia < 135 increases edema risk)
+    - Hemodynamic and respiratory stability markers (Ratio_PO2_FiO2 < 100 indicates Severe ARDS, pH < 7.30 and HCO3 < 10 indicate acidosis)
+    - Data interpretation guide for WBC, infection, ventilation, and ammonia trends
+  - **AI Transplant Surgeon**: Enhanced with surgical candidacy focus:
+    - Surgical trigger criteria (KCC: pH < 7.30, Triad criteria for transplant urgency)
+    - Surgical risk factors (Platelets < 20k/uL = severe bleeding risk, Creatinine > 3.4 mg/dL = hepatorenal syndrome)
+    - Contraindications (Severe ARDS Ratio_PO2_FiO2 ≤ 100, uncontrolled sepsis)
+    - Data interpretation guide for INR (coagulopathy perspective), Hemoglobin, and Encephalopathy
+  - All prompts now include structured output format specifications with JSON schema examples
+  - Prompts use markdown formatting with clear sections: Role, Objective, Knowledge Base & Logic Guidelines, Data Interpretation Guide, Output Format
+  - Provides agents with evidence-based clinical thresholds and decision-making frameworks specific to Acute Liver Failure (ALF) caused by Acetaminophen (APAP) overdose
+  - Improves clinical reasoning quality by giving agents explicit knowledge base and interpretation guidelines
+
 ## [0.5.42] - 2025-11-29 23:20:00
 
 ### Changed
