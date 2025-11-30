@@ -5,6 +5,150 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.45] - 2025-11-30 03:26:18
+
+### Added
+
+- **Multi-Deployment Support with Deployment-Specific API Keys**
+  - Added `--deployment` command-line argument to specify which model deployment to use (default: `gpt-5`)
+  - Supported deployments:
+    - `gpt-5` → Uses `GPT5_ENDPOINT_URL` and `GPT5_AZURE_OPENAI_API_KEY`
+    - `gpt-4.1-mini` → Uses `GPT4_1_MINI_ENDPOINT_URL` and `GPT4_1_MINI_AZURE_OPENAI_API_KEY`
+    - `gpt-5-mini` → Uses `GPT5_MINI_ENDPOINT_URL` and `GPT5_MINI_AZURE_OPENAI_API_KEY`
+    - `claude-opus-4-1` → Uses `OPUS4_1_ENDPOINT_URL` and `OPUS4_1_ANTHROPIC_API_KEY`
+    - `claude-sonnet-4-5` → Uses `SONNET4_5_ENDPOINT_URL` and `SONNET4_5_ANTHROPIC_API_KEY`
+  - Updated `get_azure_openai_client()` function to accept optional `deployment_name` parameter
+  - Each deployment can have its own endpoint URL and API key configured in `.env` file
+  - Falls back to generic `AZURE_OPENAI_API_KEY` or `ANTHROPIC_API_KEY` if deployment-specific key not found
+
+  - **Usage Examples**
+    - Quick local test (default deployment `gpt-5`, process 1 patient):
+      - ```zsh
+        uv run python multi_agent_system.py --deployment gpt-5 --num_patient 1
+        ```
+    - Run a specific deployment with a single patient and specific day:
+      - ```zsh
+        uv run python multi_agent_system.py --deployment claude-opus-4-1 --patient_id 1185 --day 3 --num_patient 1
+        ```
+    - Loop through all supported deployments and run 1 patient each (zsh):
+      - ```zsh
+        for d in gpt-5 gpt-4.1-mini gpt-5-mini claude-opus-4-1 claude-sonnet-4-5; do
+          uv run python multi_agent_system.py --deployment $d --num_patient 1
+        done
+        ```
+    - Show the dynamic output filename (one file per deployment):
+      - ```zsh
+        ls -1 agent_predictions_*${d}*.xlsx
+        ```
+    - Use the `date` command to get the current timestamp (local time):
+      - ```zsh
+        date "+%Y-%m-%d %H:%M:%S"
+        ```
+    - Rename output to include timestamp to avoid overwriting:
+      - ```zsh
+        DEPLOYMENT=gpt-5
+        uv run python multi_agent_system.py --deployment $DEPLOYMENT --num_patient 1
+        TIMESTAMP=$(date "+%Y%m%d_%H%M%S")
+        mv "agent_predictions_${DEPLOYMENT}.xlsx" "agent_predictions_${DEPLOYMENT}_${TIMESTAMP}.xlsx"
+        ```
+    - Programmatically update the changelog heading timestamp (macOS zsh):
+      - ```zsh
+        sed -i '' "s/^## \[0.5.45\] - .*/## [0.5.45] - $(date '+%Y-%m-%d %H:%M:%S')/" CHANGELOG.md
+        git add CHANGELOG.md
+        git commit -m "docs(changelog): update timestamp to $(date '+%Y-%m-%d %H:%M:%S')"
+        ```
+
+### Changed
+
+- **Dynamic Output Filename Based on Deployment**
+  - Output filename now includes the deployment name: `agent_predictions_{deployment}.xlsx`
+  - Example: `agent_predictions_gpt-5.xlsx`, `agent_predictions_claude-opus-4-1.xlsx`
+  - Allows running multiple deployments without overwriting previous results
+
+## [0.5.45] - 2025-11-30 12:00:00
+
+### Added
+
+- **Multi-Deployment Support for Azure OpenAI and Anthropic Models**
+  - Added `--deployment` command-line argument to select which model to use
+  - Supported deployments: `gpt-5` (default), `gpt-4.1-mini`, `gpt-5-mini`, `claude-opus-4-1`, `claude-sonnet-4-5`
+  - Each deployment uses its own environment variable prefix for API keys and endpoints:
+    - `gpt-5` → `GPT5_ENDPOINT_URL`, `GPT5_AZURE_OPENAI_API_KEY`
+    - `gpt-4.1-mini` → `GPT4_1_MINI_ENDPOINT_URL`, `GPT4_1_MINI_AZURE_OPENAI_API_KEY`
+    - `gpt-5-mini` → `GPT5_MINI_ENDPOINT_URL`, `GPT5_MINI_AZURE_OPENAI_API_KEY`
+    - `claude-opus-4-1` → `OPUS4_1_ENDPOINT_URL`, `OPUS4_1_ANTHROPIC_API_KEY`
+    - `claude-sonnet-4-5` → `SONNET4_5_ENDPOINT_URL`, `SONNET4_5_ANTHROPIC_API_KEY`
+
+- **Dynamic Output Filenames**
+  - Output Excel files now include the deployment name: `agent_predictions_{deployment}.xlsx`
+  - Allows running multiple deployments without overwriting results
+
+### Changed
+
+- **Updated `get_azure_openai_client()` function**
+  - Added special case handling for Anthropic model name to environment variable prefix mapping
+  - Added fallback to generic API keys (`AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) if deployment-specific keys not found
+
+## [0.5.44] - 2025-01-27 00:00:00
+
+### Added
+
+- **Enhanced Prediction Output with Accuracy Metrics**
+  - Added `actual_survival_text` column to output Excel file: converts `Spont_Survival21` (1/0) to "Yes"/"No" format
+  - Added correctness columns for each agent and final prediction:
+    - `Final_Correct`: TRUE/FALSE if final prediction matches actual survival text
+    - `hepatologist_correct`: TRUE/FALSE if hepatologist decision matches actual survival text
+    - `critical_care_correct`: TRUE/FALSE if critical care physician decision matches actual survival text
+    - `transplant_surgeon_correct`: TRUE/FALSE if transplant surgeon decision matches actual survival text
+  - Added accuracy calculations and logging:
+    - Calculates accuracy for final prediction and each individual agent
+    - Logs accuracy metrics as percentages (e.g., "85.23%")
+    - Only includes predictions with valid ground truth data in accuracy calculations
+    - Accuracy metrics displayed in console output after processing completes
+  - Improves evaluation capabilities by providing direct correctness indicators and accuracy metrics for model performance assessment
+
+## [0.5.43] - 2025-11-30 00:37:59
+
+### Changed
+
+- **Enhanced Agent System Prompts with Clinical Knowledge Base**
+  - Significantly improved system prompts for all three specialist agents with domain-specific clinical guidelines
+  - **AI Hepatologist**: Enhanced with detailed knowledge base focusing on:
+    - Regeneration vs. Necrosis markers (Phosphate > 5.0 mg/dL indicates failure, < 2.5 mg/dL suggests regeneration)
+    - Synthetic function markers (INR > 6.5 as critical KCC threshold)
+    - King's College Criteria evaluation (Single Criterion: pH < 7.30; Triad: INR > 6.5 AND Creatinine > 3.4 AND Encephalopathy Grade III/IV)
+    - N-Acetylcysteine (NAC) timing considerations
+    - Data interpretation guide for ALT and Bilirubin in APAP overdose context
+  - **AI Critical Care Physician**: Enhanced with neuro-critical care focus:
+    - Neurological risk assessment (Arterial Ammonia thresholds: > 150 µmol/L High Risk, > 200 µmol/L Critical Risk)
+    - Neuroprotective strategy (Sodium therapeutic range 145–154 mEq/L, hyponatremia < 135 increases edema risk)
+    - Hemodynamic and respiratory stability markers (Ratio_PO2_FiO2 < 100 indicates Severe ARDS, pH < 7.30 and HCO3 < 10 indicate acidosis)
+    - Data interpretation guide for WBC, infection, ventilation, and ammonia trends
+  - **AI Transplant Surgeon**: Enhanced with surgical candidacy focus:
+    - Surgical trigger criteria (KCC: pH < 7.30, Triad criteria for transplant urgency)
+    - Surgical risk factors (Platelets < 20k/uL = severe bleeding risk, Creatinine > 3.4 mg/dL = hepatorenal syndrome)
+    - Contraindications (Severe ARDS Ratio_PO2_FiO2 ≤ 100, uncontrolled sepsis)
+    - Data interpretation guide for INR (coagulopathy perspective), Hemoglobin, and Encephalopathy
+  - All prompts now include structured output format specifications with JSON schema examples
+  - Prompts use markdown formatting with clear sections: Role, Objective, Knowledge Base & Logic Guidelines, Data Interpretation Guide, Output Format
+  - Provides agents with evidence-based clinical thresholds and decision-making frameworks specific to Acute Liver Failure (ALF) caused by Acetaminophen (APAP) overdose
+  - Improves clinical reasoning quality by giving agents explicit knowledge base and interpretation guidelines
+
+## [0.5.42] - 2025-11-29 23:20:00
+
+### Changed
+
+- **Unified Vignette Input and Equal Agent Weights**
+  - All three agents (Hepatologist, Critical Care Physician, Transplant Surgeon) now receive the same comprehensive vignette (`patient_day_vignette`)
+  - Previously, each agent received agent-specific vignettes filtered by variable assignments
+  - Changed from weighted voting (Critical Care=40%, Surgeon=30%, Hepatologist=30%) to equal weights (33.33% each)
+  - Updated `AgentState` to use single `vignette` field instead of three separate vignette fields
+  - Updated all agent functions to read from the unified `vignette` field
+  - Updated `final_synthesis()` to use equal weights (1/3 each) and reflect this in system prompts
+  - Updated `process_patient_day()` to use `patient_day_vignette` column from input data
+  - Simplifies the architecture by giving all agents access to complete clinical information
+  - Ensures equal representation of all specialist perspectives in the final committee decision
+
 ## [0.5.41] - 2025-11-24 14:38:00
 
 ### Added

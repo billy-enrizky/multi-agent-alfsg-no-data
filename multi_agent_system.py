@@ -33,39 +33,57 @@ class AgentState(TypedDict):
     """State passed between nodes in the graph."""
     subject_id: int
     day: int
-    hepatologist_vignette: str
-    critical_care_physician_vignette: str
-    transplant_surgeon_vignette: str
+    vignette: str
     hepatologist_output: AgentDecision | None
     critical_care_output: AgentDecision | None
     transplant_surgeon_output: AgentDecision | None
     final_prediction: FinalPrediction | None
 
-def get_azure_openai_client():
-    """Initialize client (OpenAI or Anthropic Foundry) based on deployment name."""
-    endpoint = os.getenv("ENDPOINT_URL")
-    deployment_name = os.getenv("DEPLOYMENT_NAME")
+def get_azure_openai_client(deployment_name: str = None):
+    """Initialize client (OpenAI or Anthropic Foundry) based on deployment name.
     
-    if not endpoint:
-        raise ValueError("ENDPOINT_URL environment variable is required")
-    if not deployment_name:
-        raise ValueError("DEPLOYMENT_NAME environment variable is required")
+    Args:
+        deployment_name: The deployment/model name. If None, uses DEPLOYMENT_NAME env var or defaults to 'gpt-5'.
+    """
+    if deployment_name is None:
+        deployment_name = os.getenv("DEPLOYMENT_NAME", "gpt-5")
     
-    # Check if using Anthropic Foundry
+    # Convert deployment name to environment variable prefix
+    # e.g., "gpt-5" -> "GPT5", "gpt-4.1-mini" -> "GPT4_1_MINI", "gpt-5-mini" -> "GPT5_MINI"
+    # Anthropic models: "claude-opus-4-1" -> "OPUS4_1", "claude-sonnet-4-5" -> "SONNET4_5"
     if deployment_name == "claude-opus-4-1":
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        deployment = "OPUS4_1"
+    elif deployment_name == "claude-sonnet-4-5":
+        deployment = "SONNET4_5"
+    else:
+        deployment = deployment_name.replace("-", "_").replace(".", "_").upper()
+        # Special handling: remove underscore between GPT and number (e.g., "GPT_5" -> "GPT5")
+        deployment = deployment.replace("GPT_", "GPT")
+    
+    endpoint = os.getenv(f"{deployment}_ENDPOINT_URL")
+    
+    # Check if using Anthropic Foundry (claude models)
+    if deployment_name in ["claude-opus-4-1", "claude-sonnet-4-5"]:
+        # Use deployment-specific API key
+        api_key = os.getenv(f"{deployment}_ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable is required for Anthropic Foundry")
+            # Fallback to generic API key
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(f"{deployment}_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY environment variable is required for Anthropic Foundry")
         client = AnthropicFoundry(
             api_key=api_key,
             base_url=endpoint
         )
         return client, deployment_name, "anthropic"
     else:
-        # Default to OpenAI
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        # Default to OpenAI - use deployment-specific API key
+        api_key = os.getenv(f"{deployment}_AZURE_OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
+            # Fallback to generic API key
+            api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(f"{deployment}_AZURE_OPENAI_API_KEY or AZURE_OPENAI_API_KEY environment variable is required")
         client = OpenAI(
             base_url=f"{endpoint}",
             api_key=api_key
@@ -285,21 +303,37 @@ def hepatologist_agent(state: AgentState) -> AgentState:
     """AI Hepatologist agent node."""
     logger.info(f"Processing Hepatologist agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['hepatologist_vignette']
+    vignette = state['vignette']
     
-    system_prompt = """You are an AI Hepatologist specializing in acute liver failure and liver transplantation.
-Your role is to analyze clinical data related to liver function, hepatic encephalopathy, and liver-related complications.
-Based on the clinical vignette provided, predict whether the patient will achieve spontaneous survival at 21 days (without liver transplantation).
+    system_prompt = """# Role
+You are an AI Hepatologist specializing in Acute Liver Failure (ALF) caused by Acetaminophen (APAP) overdose. Your primary responsibility is to analyze biochemical trends to determine if the liver is regenerating or if irreversible necrosis has occurred.
 
-Consider:
-- Liver synthetic function (INR, Prothrombin time, Bilirubin, ALT)
-- Hepatic encephalopathy grade
-- Ammonia levels
-- Platelet count and coagulation status
-- Patient demographics and prior treatments
-- Trends in liver function markers
+# Objective
+Predict whether the patient will achieve **Spontaneous Survival (without transplant)** at 21 days.
 
-Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
+# Knowledge Base & Logic Guidelines
+1.  **Regeneration vs. Necrosis (Phosphate & Lactate):**
+    * Pay specific attention to **Phosphate**. Levels > 5.0 mg/dL suggest a failure of liver regeneration (high mortality risk). Levels < 2.5 mg/dL suggest rapid cellular uptake and regeneration (good prognosis).
+    * **Lactate** > 3.0 mmol/L post-fluid resuscitation indicates metabolic failure and is a high-risk marker.
+2.  **Synthetic Function (INR):**
+    * **INR** is your primary marker of synthetic failure. An INR > 6.5 is a critical threshold in the King's College Criteria (KCC).
+3.  **King's College Criteria (KCC) for Acetaminophen:**
+    * Evaluate if the patient meets the "Single Criterion": Arterial pH < 7.30.
+    * Evaluate if the patient meets the "Triad Criteria": INR > 6.5 AND Creatinine > 3.4 mg/dL AND Encephalopathy Grade III/IV.
+4.  **N-Acetylcysteine (NAC):** Consider if `Pre_NAC_IV` was administered early. Late administration reduces efficacy.
+
+# Data Interpretation Guide
+* **ALT:** extremely high levels (>800-1000) are typical in APAP overdose but do not predict mortality as well as INR or Lactate.
+* **Bilirubin:** In APAP cases, bilirubin may lag behind INR. High levels (>12 mg/dL) indicate established severe dysfunction.
+
+# Output Format
+You must strictly adhere to this JSON format:
+{
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation citing specific biomarkers (Phosphate, INR, Lactate) and KCC criteria."
+}
+"""
 
     prompt = f"""Clinical Vignette:
 {vignette}
@@ -396,22 +430,38 @@ def critical_care_agent(state: AgentState) -> AgentState:
     """AI Critical Care Physician agent node."""
     logger.info(f"Processing Critical Care Physician agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['critical_care_physician_vignette']
+    vignette = state['vignette']
     
-    system_prompt = """You are an AI Critical Care Physician specializing in intensive care management of acute liver failure patients.
-Your role is to analyze ICU-related parameters, organ support, and critical care interventions.
-Based on the clinical vignette provided, predict whether the patient will achieve spontaneous survival at 21 days (without liver transplantation).
+    system_prompt = """# Role
+You are an AI Critical Care Physician specializing in neuro-critical care for liver failure. Your primary role is to monitor for Cerebral Edema, Intracranial Hypertension (ICH), and Multi-Organ Failure.
 
-Consider:
-- Respiratory status (ventilation, PaO2/FiO2 ratio)
-- Hemodynamic status (vasopressor support)
-- Renal function (creatinine, CVVH)
-- Metabolic status (lactate, pH, bicarbonate, phosphate)
-- Infection status
-- White blood cell counts and inflammatory markers
-- Trends in critical care parameters
+# Objective
+Predict whether the patient will achieve **Spontaneous Survival (without transplant)** at 21 days.
 
-Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
+# Knowledge Base & Logic Guidelines
+1.  **Neurological Risk (The Brain):**
+    * **Ammonia (Arterial):** > 150 µmol/L is High Risk; > 200 µmol/L is Critical Risk for herniation.
+    * **Encephalopathy:** Grade 3 (Somnolence) and 4 (Coma) are critical markers.
+2.  **Neuroprotective Strategy:**
+    * **Sodium (NA):** Evaluate if Sodium is in the therapeutic neuroprotective range (145–154 mEq/L). Hyponatremia (< 135) significantly increases edema risk.
+3.  **Hemodynamic & Respiratory Stability:**
+    * **Ratio_PO2_FiO2:** < 100 mmHg indicates Severe ARDS.
+    * **Lactate & pH:** Acidosis (pH < 7.30, HCO3 < 10) indicates severe metabolic compromise.
+    * **Pressors:** If `Trt_Pressors` = 1, the patient is hemodynamically unstable.
+
+# Data Interpretation Guide
+* **WBC & Infection:** If WBC > 20k or < 1k, or `Infection`=1, suspect Sepsis/SIRS which mimics and exacerbates ALF physiology.
+* **Ventilation:** If `Trt_Ventilator`=1, assess P/F ratio immediately.
+* **Ammonia:** This is your "canary in the coal mine." Rising ammonia despite medical management is a strong indicator against spontaneous survival.
+
+# Output Format
+You must strictly adhere to this JSON format:
+{
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation focusing on neurological status (Ammonia, HE Grade), hemodynamic stability, and extra-hepatic organ support."
+}
+"""
 
     prompt = f"""Clinical Vignette:
 {vignette}
@@ -506,22 +556,37 @@ def transplant_surgeon_agent(state: AgentState) -> AgentState:
     """AI Transplant Surgeon agent node."""
     logger.info(f"Processing Transplant Surgeon agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['transplant_surgeon_vignette']
+    vignette = state['vignette']
     
-    system_prompt = """You are an AI Transplant Surgeon specializing in liver transplantation for acute liver failure.
-Your role is to analyze surgical and MELD-related parameters to assess transplant candidacy and survival probability.
-Based on the clinical vignette provided, predict whether the patient will achieve spontaneous survival at 21 days (without liver transplantation).
+    system_prompt = """# Role
+You are an AI Transplant Surgeon specializing in emergency liver transplantation. Your role is to determine if the patient requires immediate listing (Status 1A) and if they are a viable surgical candidate. You must balance the risk of "transplanting too early" (unnecessary surgery) vs. "transplanting too late" (death or neurological devastation).
 
-Consider:
-- MELD-related parameters (Bilirubin, Creatinine, INR, Sodium)
-- Hemoglobin and blood product needs
-- Platelet count and bleeding risk
-- Respiratory failure (PaO2/FiO2 ratio)
-- Organ support requirements (ventilation, vasopressors, CVVH)
-- Infection status
-- Overall surgical risk and transplant urgency
+# Objective
+Predict whether the patient will achieve **Spontaneous Survival (without transplant)** at 21 days. (Note: If you predict "No", you are implying they require a transplant to survive).
 
-Provide a clear decision (Yes or No), a confidence score (0.0 to 1.0) indicating how certain you are of this prediction, and detailed clinical reasoning."""
+# Knowledge Base & Logic Guidelines
+1.  **The Surgical Trigger (KCC):**
+    * If Arterial pH < 7.30, the likelihood of spontaneous survival is extremely low.
+    * If the KCC "Triad" is met (INR > 6.5, Creatinine > 3.4, Grade III/IV Encephalopathy), survival without surgery is rare.
+2.  **Surgical Risk Factors (Hemostasis & Renal):**
+    * **Platelets:** < 20k/uL represents a severe bleeding risk (Grade 4).
+    * **Creatinine:** > 3.4 mg/dL indicates hepatorenal syndrome, complicating the post-op course but reinforcing the need for LT.
+3.  **Contraindications:**
+    * Severe ARDS (Ratio_PO2_FiO2 ≤ 100) or uncontrolled sepsis (WBC trends, Culture status) may make the patient too unstable for the OR.
+
+# Data Interpretation Guide
+* **INR:** While the Hepatologist views INR as function, you view it as coagulopathy. INR > 6.5 is a trigger for listing, but also a surgical warning.
+* **Hemoglobin:** < 7.0 g/dL requires resuscitation before incision.
+* **Encephalopathy:** Grade III/IV (Coma/Somnolence) accelerates the need for listing to prevent herniation.
+
+# Output Format
+You must strictly adhere to this JSON format:
+{
+  "decision": "Yes" | "No", // Yes = Spontaneous Survival, No = Death/Transplant required
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation focusing on surgical criteria (KCC), hemostasis, and operative feasibility."
+}
+"""
 
     prompt = f"""Clinical Vignette:
 {vignette}
@@ -620,11 +685,11 @@ def final_synthesis(state: AgentState) -> AgentState:
     critical_care = state['critical_care_output']
     transplant_surgeon = state['transplant_surgeon_output']
     
-    # Weighting: Critical Care=40%, Surgeon=30%, Hepatologist=30%
+    # Weighting: All agents have equal weight (33.33% each)
     weights = {
-        'critical_care': 0.40,
-        'transplant_surgeon': 0.30,
-        'hepatologist': 0.30
+        'critical_care': 1.0 / 3.0,
+        'transplant_surgeon': 1.0 / 3.0,
+        'hepatologist': 1.0 / 3.0
     }
     
     # Calculate weighted score
@@ -640,31 +705,31 @@ def final_synthesis(state: AgentState) -> AgentState:
     confidence = yes_votes if weighted_decision == "Yes" else (1.0 - yes_votes)
     
     system_prompt = """You are the AI Transplant Leader Committee Chair, responsible for synthesizing inputs from three specialist agents:
-1. AI Hepatologist (weight: 30%)
-2. AI Critical Care Physician (weight: 40%)
-3. AI Transplant Surgeon (weight: 30%)
+1. AI Hepatologist (weight: 33.33%)
+2. AI Critical Care Physician (weight: 33.33%)
+3. AI Transplant Surgeon (weight: 33.33%)
 
 Your role is to provide a final weighted analysis and prediction based on the three specialist opinions.
 Consider the weighted voting and provide comprehensive reasoning that synthesizes all perspectives."""
 
     prompt = f"""{system_prompt}
 
-Hepatologist Decision (30% weight):
+Hepatologist Decision (33.33% weight):
 Decision: {hepatologist.decision if hepatologist else "N/A"}
 Reasoning: {hepatologist.reasoning if hepatologist else "N/A"}
 
-Critical Care Physician Decision (40% weight):
+Critical Care Physician Decision (33.33% weight):
 Decision: {critical_care.decision if critical_care else "N/A"}
 Reasoning: {critical_care.reasoning if critical_care else "N/A"}
 
-Transplant Surgeon Decision (30% weight):
+Transplant Surgeon Decision (33.33% weight):
 Decision: {transplant_surgeon.decision if transplant_surgeon else "N/A"}
 Reasoning: {transplant_surgeon.reasoning if transplant_surgeon else "N/A"}
 
 Weighted Analysis:
-- Critical Care: {weights['critical_care']*100}% weight → {critical_care.decision if critical_care else "N/A"}
-- Transplant Surgeon: {weights['transplant_surgeon']*100}% weight → {transplant_surgeon.decision if transplant_surgeon else "N/A"}
-- Hepatologist: {weights['hepatologist']*100}% weight → {hepatologist.decision if hepatologist else "N/A"}
+- Critical Care: {weights['critical_care']*100:.2f}% weight → {critical_care.decision if critical_care else "N/A"}
+- Transplant Surgeon: {weights['transplant_surgeon']*100:.2f}% weight → {transplant_surgeon.decision if transplant_surgeon else "N/A"}
+- Hepatologist: {weights['hepatologist']*100:.2f}% weight → {hepatologist.decision if hepatologist else "N/A"}
 - Weighted Score: {yes_votes:.2f} (threshold: 0.50)
 - Weighted Decision: {weighted_decision}
 
@@ -771,9 +836,7 @@ def process_patient_day(row: pd.Series, graph) -> dict:
     state = {
         "subject_id": int(row['subject_id']),
         "day": int(row['day']),
-        "hepatologist_vignette": row['hepatologist_vignette'] if pd.notna(row.get('hepatologist_vignette')) else "",
-        "critical_care_physician_vignette": row['critical_care_physician_vignette'] if pd.notna(row.get('critical_care_physician_vignette')) else "",
-        "transplant_surgeon_vignette": row['transplant_surgeon_vignette'] if pd.notna(row.get('transplant_surgeon_vignette')) else "",
+        "vignette": row['patient_day_vignette'] if pd.notna(row.get('patient_day_vignette')) else "",
         "hepatologist_output": None,
         "critical_care_output": None,
         "transplant_surgeon_output": None,
@@ -799,10 +862,16 @@ def main():
                         help='Specific day to process (default: maximum day for each patient)')
     parser.add_argument('--patient_id', type=int, nargs='+', default=None,
                         help='Specific patient ID(s) to process (default: all patients). Can specify multiple IDs separated by spaces.')
+    parser.add_argument('--deployment', type=str, default='gpt-5',
+                        help='Deployment/model name to use (default: gpt-5). Options: gpt-5, gpt-4.1-mini, gpt-5-mini, claude-opus-4-1, claude-sonnet-4-5')
     
     args = parser.parse_args()
     
+    # Set deployment name globally via environment variable so all agents use it
+    os.environ["DEPLOYMENT_NAME"] = args.deployment
+    
     logger.info("Initializing Multi-Agent System")
+    logger.info(f"Using deployment: {args.deployment}")
     
     # Load clinical vignettes
     input_file = 'clinical_vignettes.xlsx'
@@ -869,6 +938,9 @@ def main():
             critical_care = outputs['critical_care_output']
             transplant_surgeon = outputs['transplant_surgeon_output']
             
+            actual_survival_val = row.get('Spont_Survival21', None)
+            actual_survival_text = "Yes" if actual_survival_val == 1 else ("No" if actual_survival_val == 0 else None)
+            
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
@@ -884,11 +956,19 @@ def main():
                 'transplant_surgeon_decision': transplant_surgeon.decision if transplant_surgeon else None,
                 'transplant_surgeon_confidence': transplant_surgeon.confidence if transplant_surgeon else None,
                 'transplant_surgeon_reasoning': transplant_surgeon.reasoning if transplant_surgeon else None,
-                'actual_survival': row.get('Spont_Survival21', None)
+                'actual_survival': actual_survival_val,
+                'actual_survival_text': actual_survival_text,
+                'Final_Correct': (final_pred.prediction == actual_survival_text) if (final_pred and actual_survival_text) else None,
+                'hepatologist_correct': (hepatologist.decision == actual_survival_text) if (hepatologist and actual_survival_text) else None,
+                'critical_care_correct': (critical_care.decision == actual_survival_text) if (critical_care and actual_survival_text) else None,
+                'transplant_surgeon_correct': (transplant_surgeon.decision == actual_survival_text) if (transplant_surgeon and actual_survival_text) else None
             })
             logger.info(f"Final Prediction: {final_pred.prediction if final_pred else 'N/A'} (confidence: {final_pred.confidence if final_pred else 0.0:.2f})")
         except Exception as e:
             logger.error(f"Error processing row {idx}: {e}")
+            actual_survival_val = row.get('Spont_Survival21', None)
+            actual_survival_text = "Yes" if actual_survival_val == 1 else ("No" if actual_survival_val == 0 else None)
+            
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
@@ -904,12 +984,37 @@ def main():
                 'transplant_surgeon_decision': None,
                 'transplant_surgeon_confidence': None,
                 'transplant_surgeon_reasoning': None,
-                'actual_survival': row.get('Spont_Survival21', None)
+                'actual_survival': actual_survival_val,
+                'actual_survival_text': actual_survival_text,
+                'Final_Correct': None,
+                'hepatologist_correct': None,
+                'critical_care_correct': None,
+                'transplant_surgeon_correct': None
             })
     
     # Always save results to Excel file
     results_df = pd.DataFrame(results)
-    output_file = 'agent_predictions.xlsx'
+    
+    # Calculate accuracy metrics
+    # Filter out rows where actual_survival_text is None (no ground truth available)
+    valid_df = results_df[results_df['actual_survival_text'].notna()].copy()
+    
+    if len(valid_df) > 0:
+        # Calculate accuracy for each agent and final prediction
+        final_accuracy = valid_df['Final_Correct'].sum() / len(valid_df) if 'Final_Correct' in valid_df.columns else 0.0
+        hepatologist_accuracy = valid_df['hepatologist_correct'].sum() / len(valid_df) if 'hepatologist_correct' in valid_df.columns else 0.0
+        critical_care_accuracy = valid_df['critical_care_correct'].sum() / len(valid_df) if 'critical_care_correct' in valid_df.columns else 0.0
+        transplant_surgeon_accuracy = valid_df['transplant_surgeon_correct'].sum() / len(valid_df) if 'transplant_surgeon_correct' in valid_df.columns else 0.0
+        
+        logger.info(f"\nAccuracy Metrics (based on {len(valid_df)} predictions with ground truth):")
+        logger.info(f"  Final Prediction Accuracy: {final_accuracy:.4f} ({final_accuracy*100:.2f}%)")
+        logger.info(f"  Hepatologist Accuracy: {hepatologist_accuracy:.4f} ({hepatologist_accuracy*100:.2f}%)")
+        logger.info(f"  Critical Care Physician Accuracy: {critical_care_accuracy:.4f} ({critical_care_accuracy*100:.2f}%)")
+        logger.info(f"  Transplant Surgeon Accuracy: {transplant_surgeon_accuracy:.4f} ({transplant_surgeon_accuracy*100:.2f}%)")
+    else:
+        logger.warning("No valid ground truth data available for accuracy calculation")
+    
+    output_file = f'agent_predictions_{args.deployment}.xlsx'
     results_df.to_excel(output_file, index=False, engine='openpyxl')
     logger.info(f"\nSaved predictions to {output_file}")
     logger.info(f"\nResults summary:")
