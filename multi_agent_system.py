@@ -39,31 +39,51 @@ class AgentState(TypedDict):
     transplant_surgeon_output: AgentDecision | None
     final_prediction: FinalPrediction | None
 
-def get_azure_openai_client():
-    """Initialize client (OpenAI or Anthropic Foundry) based on deployment name."""
-    endpoint = os.getenv("ENDPOINT_URL")
-    deployment_name = os.getenv("DEPLOYMENT_NAME")
+def get_azure_openai_client(deployment_name: str = None):
+    """Initialize client (OpenAI or Anthropic Foundry) based on deployment name.
     
-    if not endpoint:
-        raise ValueError("ENDPOINT_URL environment variable is required")
-    if not deployment_name:
-        raise ValueError("DEPLOYMENT_NAME environment variable is required")
+    Args:
+        deployment_name: The deployment/model name. If None, uses DEPLOYMENT_NAME env var or defaults to 'gpt-5'.
+    """
+    if deployment_name is None:
+        deployment_name = os.getenv("DEPLOYMENT_NAME", "gpt-5")
     
-    # Check if using Anthropic Foundry
+    # Convert deployment name to environment variable prefix
+    # e.g., "gpt-5" -> "GPT5", "gpt-4.1-mini" -> "GPT4_1_MINI", "gpt-5-mini" -> "GPT5_MINI"
+    # Anthropic models: "claude-opus-4-1" -> "OPUS4_1", "claude-sonnet-4-5" -> "SONNET4_5"
     if deployment_name == "claude-opus-4-1":
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        deployment = "OPUS4_1"
+    elif deployment_name == "claude-sonnet-4-5":
+        deployment = "SONNET4_5"
+    else:
+        deployment = deployment_name.replace("-", "_").replace(".", "_").upper()
+        # Special handling: remove underscore between GPT and number (e.g., "GPT_5" -> "GPT5")
+        deployment = deployment.replace("GPT_", "GPT")
+    
+    endpoint = os.getenv(f"{deployment}_ENDPOINT_URL")
+    
+    # Check if using Anthropic Foundry (claude models)
+    if deployment_name in ["claude-opus-4-1", "claude-sonnet-4-5"]:
+        # Use deployment-specific API key
+        api_key = os.getenv(f"{deployment}_ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable is required for Anthropic Foundry")
+            # Fallback to generic API key
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(f"{deployment}_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY environment variable is required for Anthropic Foundry")
         client = AnthropicFoundry(
             api_key=api_key,
             base_url=endpoint
         )
         return client, deployment_name, "anthropic"
     else:
-        # Default to OpenAI
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        # Default to OpenAI - use deployment-specific API key
+        api_key = os.getenv(f"{deployment}_AZURE_OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
+            # Fallback to generic API key
+            api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(f"{deployment}_AZURE_OPENAI_API_KEY or AZURE_OPENAI_API_KEY environment variable is required")
         client = OpenAI(
             base_url=f"{endpoint}",
             api_key=api_key
@@ -842,10 +862,16 @@ def main():
                         help='Specific day to process (default: maximum day for each patient)')
     parser.add_argument('--patient_id', type=int, nargs='+', default=None,
                         help='Specific patient ID(s) to process (default: all patients). Can specify multiple IDs separated by spaces.')
+    parser.add_argument('--deployment', type=str, default='gpt-5',
+                        help='Deployment/model name to use (default: gpt-5). Options: gpt-5, gpt-4.1-mini, gpt-5-mini, claude-opus-4-1, claude-sonnet-4-5')
     
     args = parser.parse_args()
     
+    # Set deployment name globally via environment variable so all agents use it
+    os.environ["DEPLOYMENT_NAME"] = args.deployment
+    
     logger.info("Initializing Multi-Agent System")
+    logger.info(f"Using deployment: {args.deployment}")
     
     # Load clinical vignettes
     input_file = 'clinical_vignettes.xlsx'
@@ -988,7 +1014,7 @@ def main():
     else:
         logger.warning("No valid ground truth data available for accuracy calculation")
     
-    output_file = 'agent_predictions.xlsx'
+    output_file = f'agent_predictions_{args.deployment}.xlsx'
     results_df.to_excel(output_file, index=False, engine='openpyxl')
     logger.info(f"\nSaved predictions to {output_file}")
     logger.info(f"\nResults summary:")
