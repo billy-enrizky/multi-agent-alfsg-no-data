@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.42] - 2025-11-29 23:20:00
+
+### Changed
+
+- **Unified Vignette Input and Equal Agent Weights**
+  - All three agents (Hepatologist, Critical Care Physician, Transplant Surgeon) now receive the same comprehensive vignette (`patient_day_vignette`)
+  - Previously, each agent received agent-specific vignettes filtered by variable assignments
+  - Changed from weighted voting (Critical Care=40%, Surgeon=30%, Hepatologist=30%) to equal weights (33.33% each)
+  - Updated `AgentState` to use single `vignette` field instead of three separate vignette fields
+  - Updated all agent functions to read from the unified `vignette` field
+  - Updated `final_synthesis()` to use equal weights (1/3 each) and reflect this in system prompts
+  - Updated `process_patient_day()` to use `patient_day_vignette` column from input data
+  - Simplifies the architecture by giving all agents access to complete clinical information
+  - Ensures equal representation of all specialist perspectives in the final committee decision
+
 ## [0.5.41] - 2025-11-24 14:38:00
 
 ### Added

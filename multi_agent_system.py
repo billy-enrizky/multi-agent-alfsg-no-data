@@ -33,9 +33,7 @@ class AgentState(TypedDict):
     """State passed between nodes in the graph."""
     subject_id: int
     day: int
-    hepatologist_vignette: str
-    critical_care_physician_vignette: str
-    transplant_surgeon_vignette: str
+    vignette: str
     hepatologist_output: AgentDecision | None
     critical_care_output: AgentDecision | None
     transplant_surgeon_output: AgentDecision | None
@@ -285,7 +283,7 @@ def hepatologist_agent(state: AgentState) -> AgentState:
     """AI Hepatologist agent node."""
     logger.info(f"Processing Hepatologist agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['hepatologist_vignette']
+    vignette = state['vignette']
     
     system_prompt = """You are an AI Hepatologist specializing in acute liver failure and liver transplantation.
 Your role is to analyze clinical data related to liver function, hepatic encephalopathy, and liver-related complications.
@@ -396,7 +394,7 @@ def critical_care_agent(state: AgentState) -> AgentState:
     """AI Critical Care Physician agent node."""
     logger.info(f"Processing Critical Care Physician agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['critical_care_physician_vignette']
+    vignette = state['vignette']
     
     system_prompt = """You are an AI Critical Care Physician specializing in intensive care management of acute liver failure patients.
 Your role is to analyze ICU-related parameters, organ support, and critical care interventions.
@@ -506,7 +504,7 @@ def transplant_surgeon_agent(state: AgentState) -> AgentState:
     """AI Transplant Surgeon agent node."""
     logger.info(f"Processing Transplant Surgeon agent for subject {state['subject_id']}, day {state['day']}")
     
-    vignette = state['transplant_surgeon_vignette']
+    vignette = state['vignette']
     
     system_prompt = """You are an AI Transplant Surgeon specializing in liver transplantation for acute liver failure.
 Your role is to analyze surgical and MELD-related parameters to assess transplant candidacy and survival probability.
@@ -620,11 +618,11 @@ def final_synthesis(state: AgentState) -> AgentState:
     critical_care = state['critical_care_output']
     transplant_surgeon = state['transplant_surgeon_output']
     
-    # Weighting: Critical Care=40%, Surgeon=30%, Hepatologist=30%
+    # Weighting: All agents have equal weight (33.33% each)
     weights = {
-        'critical_care': 0.40,
-        'transplant_surgeon': 0.30,
-        'hepatologist': 0.30
+        'critical_care': 1.0 / 3.0,
+        'transplant_surgeon': 1.0 / 3.0,
+        'hepatologist': 1.0 / 3.0
     }
     
     # Calculate weighted score
@@ -640,31 +638,31 @@ def final_synthesis(state: AgentState) -> AgentState:
     confidence = yes_votes if weighted_decision == "Yes" else (1.0 - yes_votes)
     
     system_prompt = """You are the AI Transplant Leader Committee Chair, responsible for synthesizing inputs from three specialist agents:
-1. AI Hepatologist (weight: 30%)
-2. AI Critical Care Physician (weight: 40%)
-3. AI Transplant Surgeon (weight: 30%)
+1. AI Hepatologist (weight: 33.33%)
+2. AI Critical Care Physician (weight: 33.33%)
+3. AI Transplant Surgeon (weight: 33.33%)
 
 Your role is to provide a final weighted analysis and prediction based on the three specialist opinions.
 Consider the weighted voting and provide comprehensive reasoning that synthesizes all perspectives."""
 
     prompt = f"""{system_prompt}
 
-Hepatologist Decision (30% weight):
+Hepatologist Decision (33.33% weight):
 Decision: {hepatologist.decision if hepatologist else "N/A"}
 Reasoning: {hepatologist.reasoning if hepatologist else "N/A"}
 
-Critical Care Physician Decision (40% weight):
+Critical Care Physician Decision (33.33% weight):
 Decision: {critical_care.decision if critical_care else "N/A"}
 Reasoning: {critical_care.reasoning if critical_care else "N/A"}
 
-Transplant Surgeon Decision (30% weight):
+Transplant Surgeon Decision (33.33% weight):
 Decision: {transplant_surgeon.decision if transplant_surgeon else "N/A"}
 Reasoning: {transplant_surgeon.reasoning if transplant_surgeon else "N/A"}
 
 Weighted Analysis:
-- Critical Care: {weights['critical_care']*100}% weight → {critical_care.decision if critical_care else "N/A"}
-- Transplant Surgeon: {weights['transplant_surgeon']*100}% weight → {transplant_surgeon.decision if transplant_surgeon else "N/A"}
-- Hepatologist: {weights['hepatologist']*100}% weight → {hepatologist.decision if hepatologist else "N/A"}
+- Critical Care: {weights['critical_care']*100:.2f}% weight → {critical_care.decision if critical_care else "N/A"}
+- Transplant Surgeon: {weights['transplant_surgeon']*100:.2f}% weight → {transplant_surgeon.decision if transplant_surgeon else "N/A"}
+- Hepatologist: {weights['hepatologist']*100:.2f}% weight → {hepatologist.decision if hepatologist else "N/A"}
 - Weighted Score: {yes_votes:.2f} (threshold: 0.50)
 - Weighted Decision: {weighted_decision}
 
@@ -771,9 +769,7 @@ def process_patient_day(row: pd.Series, graph) -> dict:
     state = {
         "subject_id": int(row['subject_id']),
         "day": int(row['day']),
-        "hepatologist_vignette": row['hepatologist_vignette'] if pd.notna(row.get('hepatologist_vignette')) else "",
-        "critical_care_physician_vignette": row['critical_care_physician_vignette'] if pd.notna(row.get('critical_care_physician_vignette')) else "",
-        "transplant_surgeon_vignette": row['transplant_surgeon_vignette'] if pd.notna(row.get('transplant_surgeon_vignette')) else "",
+        "vignette": row['patient_day_vignette'] if pd.notna(row.get('patient_day_vignette')) else "",
         "hepatologist_output": None,
         "critical_care_output": None,
         "transplant_surgeon_output": None,
