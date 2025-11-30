@@ -783,8 +783,7 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Remaining vignettes: {len(vignettes_df)}")
     
     # Fill missing values from previous days (AFTER filtering)
-    # COMMENTED OUT FOR NOW
-    # vignettes_df = fill_missing_values_from_previous_days(vignettes_df, df)
+    vignettes_df = fill_missing_values_from_previous_days(vignettes_df, df)
     
     # Create comprehensive clinical vignette text
     logger.info("Creating comprehensive clinical vignettes...")
