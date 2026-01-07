@@ -1011,7 +1011,8 @@ def main():
     logger.info("Starting vignette creation process")
     
     # Read merged subjects
-    input_file = 'merged_subjects.xlsx'
+    # input_file = 'merged_subjects.xlsx'
+    input_file = 'ALFSG_12MAR2025_processed_wide.xlsx'
     logger.info(f"Reading {input_file}")
     df = pd.read_excel(input_file)
     logger.info(f"Input shape: {df.shape}")
