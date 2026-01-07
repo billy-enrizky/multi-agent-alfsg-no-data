@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
+import argparse
 from typing import Dict, Tuple, Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -517,25 +518,11 @@ def calculate_trend_detailed(current: float, previous: float, days_diff: int, va
     absolute_change = current - previous
     unit = BINNING_THRESHOLDS.get(var_name, {}).get('unit', '')
     
-    # More nuanced trend classification (using consistent descriptive labels)
-    if abs(percent_change) < 5:
-        trend = "Stable"
-    elif percent_change > 100:
-        trend = "Extremely Increasing"
-    elif percent_change > 50:
-        trend = "Rapidly Increasing"
-    elif percent_change > 20:
+    # Simplified trend classification
+    if percent_change > 0:
         trend = "Increasing"
-    elif percent_change > 5:
-        trend = "Mildly Increasing"
-    elif percent_change < -100:
-        trend = "Extremely Decreasing"
-    elif percent_change < -50:
-        trend = "Rapidly Decreasing"
-    elif percent_change < -20:
+    elif percent_change < 0:
         trend = "Decreasing"
-    elif percent_change < -5:
-        trend = "Mildly Decreasing"
     else:
         trend = "Stable"
     
@@ -701,7 +688,7 @@ def fill_missing_values_from_previous_days_long(vignettes_df: pd.DataFrame, df_l
     logger.info("Completed filling missing values from previous days (long format)")
     return vignettes_df
 
-def create_vignettes_from_long(df_long: pd.DataFrame) -> pd.DataFrame:
+def create_vignettes_from_long(df_long: pd.DataFrame, no_binning: bool = False) -> pd.DataFrame:
     """Create clinical vignettes directly from long format data."""
     logger.info("Creating clinical vignettes from long format...")
     
@@ -754,7 +741,10 @@ def create_vignettes_from_long(df_long: pd.DataFrame) -> pd.DataFrame:
             if var in row.index:
                 value = row[var]
                 if not pd.isna(value):
-                    binned = bin_continuous_value(value, var)
+                    if no_binning:
+                        binned = None
+                    else:
+                        binned = bin_continuous_value(value, var)
                     value_rounded = round(float(value), 2)
                     vignette[f"{var}_binned"] = binned
                     vignette[f"{var}_value"] = value_rounded
@@ -781,25 +771,25 @@ def create_vignettes_from_long(df_long: pd.DataFrame) -> pd.DataFrame:
             for var in BINNING_THRESHOLDS.keys():
                 vignette[f"{var}_trend"] = None
         
-        # Add cumulative trend history (all trends from day 1 to current day)
-        trend_history_parts = []
+        # Add cumulative trend history (all trends from day 1 to current day) per variable
         subject_days = sorted(subject_data['day'].unique())
-        
-        if current_day > 1:
-            # Build cumulative history from day 1 to current day
-            for d_idx in range(len(subject_days) - 1):
-                curr_d = subject_days[d_idx + 1]
-                prev_d = subject_days[d_idx]
-                
-                if curr_d <= current_day:
-                    curr_data = subject_data[subject_data['day'] == curr_d]
-                    prev_data = subject_data[subject_data['day'] == prev_d]
+        for var in BINNING_THRESHOLDS.keys():
+            trend_history_parts = []
+            
+            if current_day > 1:
+                # Build cumulative history from day 1 to current day for this variable
+                for d_idx in range(len(subject_days) - 1):
+                    curr_d = subject_days[d_idx + 1]
+                    prev_d = subject_days[d_idx]
                     
-                    if not curr_data.empty and not prev_data.empty:
-                        curr_row = curr_data.iloc[0]
-                        prev_row = prev_data.iloc[0]
+                    if curr_d <= current_day:
+                        curr_data = subject_data[subject_data['day'] == curr_d]
+                        prev_data = subject_data[subject_data['day'] == prev_d]
                         
-                        for var in BINNING_THRESHOLDS.keys():
+                        if not curr_data.empty and not prev_data.empty:
+                            curr_row = curr_data.iloc[0]
+                            prev_row = prev_data.iloc[0]
+                            
                             if var in curr_row.index and var in prev_row.index:
                                 curr_val = curr_row[var]
                                 prev_val = prev_row[var]
@@ -808,12 +798,12 @@ def create_vignettes_from_long(df_long: pd.DataFrame) -> pd.DataFrame:
                                     trend = calculate_trend_detailed(curr_val, prev_val, 1, var)
                                     if trend:
                                         trend_history_parts.append(f"day {int(prev_d)} to day {int(curr_d)}: {trend}")
-        
-        if trend_history_parts:
-            # Join with "then" for sequential narrative
-            vignette['trend_history'] = ", then ".join(trend_history_parts)
-        else:
-            vignette['trend_history'] = None
+            
+            if trend_history_parts:
+                # Join with "then" for sequential narrative
+                vignette[f"{var}_trend_history"] = ", then ".join(trend_history_parts)
+            else:
+                vignette[f"{var}_trend_history"] = None
         
         # Add binary treatment variables with text labels
         for treatment in ['Infection', 'Trt_Ventilator', 'Trt_Pressors', 'Trt_CVVH', 'F27Q04']:
@@ -911,12 +901,29 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
                 if pd.notna(source_day) and int(source_day) != current_day:
                     source_day_text = f" (from day {int(source_day)})"
                 
-                if unit:
-                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
+                if binned is not None:
+                    if unit:
+                        lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
+                    else:
+                        lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
                 else:
-                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
+                    if unit:
+                        lab_parts.append(f"{var_name} is {value_rounded} {unit}{source_day_text}")
+                    else:
+                        lab_parts.append(f"{var_name} is {value_rounded}{source_day_text}")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
+        elif pd.notna(value):
+            # No binning, just show value
+            unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+            value_rounded = round(float(value), 2)
+            source_day_text = ""
+            if pd.notna(source_day) and int(source_day) != current_day:
+                source_day_text = f" (from day {int(source_day)})"
+            if unit:
+                lab_parts.append(f"{var_name} is {value_rounded} {unit}{source_day_text}")
+            else:
+                lab_parts.append(f"{var_name} is {value_rounded}{source_day_text}")
     
     if lab_parts:
         parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
@@ -1017,12 +1024,29 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
                 if pd.notna(source_day) and int(source_day) != current_day:
                     source_day_text = f" (from day {int(source_day)})"
                 
-                if unit:
-                    lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
+                if binned is not None:
+                    if unit:
+                        lab_parts.append(f"{var_name} is {value_rounded} {unit} ({binned.lower()}){source_day_text}")
+                    else:
+                        lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
                 else:
-                    lab_parts.append(f"{var_name} is {value_rounded} ({binned.lower()}){source_day_text}")
+                    if unit:
+                        lab_parts.append(f"{var_name} is {value_rounded} {unit}{source_day_text}")
+                    else:
+                        lab_parts.append(f"{var_name} is {value_rounded}{source_day_text}")
             else:
                 lab_parts.append(f"{var_name} is {binned.lower()}")
+        elif pd.notna(value):
+            # No binning, just show value
+            unit = BINNING_THRESHOLDS.get(var, {}).get('unit', '')
+            value_rounded = round(float(value), 2)
+            source_day_text = ""
+            if pd.notna(source_day) and int(source_day) != current_day:
+                source_day_text = f" (from day {int(source_day)})"
+            if unit:
+                lab_parts.append(f"{var_name} is {value_rounded} {unit}{source_day_text}")
+            else:
+                lab_parts.append(f"{var_name} is {value_rounded}{source_day_text}")
     
     if lab_parts:
         parts.append("Laboratory values: " + "; ".join(lab_parts) + ".")
@@ -1078,6 +1102,10 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     return "\n".join(parts)
 
 def main():
+    parser = argparse.ArgumentParser(description='Create clinical vignettes from ALFSG data')
+    parser.add_argument('--no_binning', action='store_true', help='Disable binning for continuous variables, show raw values only')
+    args = parser.parse_args()
+    
     logger.info("Starting vignette creation process")
     
     # Read ALFSG processed data (long format)
@@ -1087,7 +1115,7 @@ def main():
     logger.info(f"Input shape: {df_long.shape}")
     
     # Create vignettes directly from long format
-    vignettes_df = create_vignettes_from_long(df_long)
+    vignettes_df = create_vignettes_from_long(df_long, no_binning=args.no_binning)
     
     # Save output
     output_file = 'clinical_vignettes.xlsx'
