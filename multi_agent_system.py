@@ -3,6 +3,7 @@ import json
 import logging
 import argparse
 import pandas as pd
+import time
 from typing import Literal, TypedDict, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
@@ -942,6 +943,8 @@ def main():
     
     args = parser.parse_args()
     
+    start_time = time.time()
+    
     # Set deployment name globally via environment variable so all agents use it
     os.environ["DEPLOYMENT_NAME"] = args.deployment
     
@@ -1095,6 +1098,10 @@ def main():
     logger.info(f"\nResults summary:")
     logger.info(f"Total predictions: {len(results_df)}")
     logger.info(f"Results saved to {output_file}")
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Total execution time: {elapsed_time:.2f} seconds")
+    
     print(results_df)
 
 if __name__ == '__main__':
