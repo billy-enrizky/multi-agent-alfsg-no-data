@@ -639,126 +639,190 @@ def fill_missing_values_from_previous_days(vignettes_df: pd.DataFrame, df: pd.Da
     logger.info("Completed filling missing values from previous days")
     return vignettes_df
 
-def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
-    """Create clinical vignettes for each patient-day combination."""
-    logger.info("Creating clinical vignettes...")
+def fill_missing_values_from_previous_days_long(vignettes_df: pd.DataFrame, df_long: pd.DataFrame) -> pd.DataFrame:
+    """Fill missing values in vignettes by looking backwards to previous days in long format data.
     
-    # Get all day columns for each variable
-    continuous_vars = [var for var in BINNING_THRESHOLDS.keys() if any(f"{var}_day_" in col for col in df.columns)]
+    For each vignette at day i, if a variable value is missing, look backwards
+    to day i-1, i-2, etc. until day 1 in the original long format data.
+    Only set source_day when value comes from a previous day (not current day).
+    """
+    logger.info("Filling missing values from previous days (long format)...")
+    
+    continuous_vars = list(BINNING_THRESHOLDS.keys())
+    
+    # Initialize source_day columns
+    for var in continuous_vars:
+        source_day_col = f"{var}_source_day"
+        if source_day_col not in vignettes_df.columns:
+            vignettes_df[source_day_col] = None
+    
+    # Group the original long format data by subject
+    subject_groups = df_long.groupby('subject_id')
+    
+    # Process each vignette row
+    for idx, vignette_row in vignettes_df.iterrows():
+        subject_id = vignette_row['subject_id']
+        current_day = int(vignette_row['day'])
+        
+        # Get the original subject data
+        if subject_id in subject_groups.groups:
+            subject_data = subject_groups.get_group(subject_id)
+            
+            # For each continuous variable
+            for var in continuous_vars:
+                binned_col = f"{var}_binned"
+                value_col = f"{var}_value"
+                source_day_col = f"{var}_source_day"
+                
+                # Check if value is missing in vignette
+                if pd.isna(vignette_row.get(value_col)):
+                    # Look backwards from current_day - 1 to day 1
+                    found_value = None
+                    found_day = None
+                    
+                    for check_day in range(current_day - 1, 0, -1):
+                        day_data = subject_data[subject_data['day'] == check_day]
+                        if not day_data.empty:
+                            check_row = day_data.iloc[0]
+                            if var in check_row.index and not pd.isna(check_row[var]):
+                                found_value = check_row[var]
+                                found_day = check_day
+                                break
+                    
+                    if found_value is not None and found_day is not None:
+                        # Update the value and binned label
+                        binned = bin_continuous_value(found_value, var)
+                        value_rounded = round(float(found_value), 2)
+                        
+                        vignettes_df.at[idx, value_col] = value_rounded
+                        vignettes_df.at[idx, binned_col] = binned
+                        vignettes_df.at[idx, source_day_col] = found_day
+    
+    logger.info("Completed filling missing values from previous days (long format)")
+    return vignettes_df
+
+def create_vignettes_from_long(df_long: pd.DataFrame) -> pd.DataFrame:
+    """Create clinical vignettes directly from long format data."""
+    logger.info("Creating clinical vignettes from long format...")
+    
+    # Map zVisitNm to day numbers
+    day_mapping = {
+        'ALF Admission': 1,
+        'ALF Day 2': 2,
+        'ALF Day 3': 3,
+        'ALF Day 4': 4,
+        'ALF Day 5': 5,
+        'ALF Day 6': 6,
+        'ALF Day 7': 7
+    }
+    df_long = df_long.copy()
+    df_long['day'] = df_long['zVisitNm'].map(day_mapping)
+    
+    # Create F27Q04 from Coma columns for compatibility
+    coma_cols = ['Coma_0.0', 'Coma_1.0', 'Coma_2.0', 'Coma_3.0', 'Coma_4.0']
+    df_long['F27Q04'] = df_long[coma_cols].idxmax(axis=1).str.extract(r'Coma_(\d+)\.0').astype(float)
+    
+    # Group by subject for easier access to subject data
+    subject_groups = df_long.groupby('subject_id')
     
     # Create a list to store vignette rows
     vignette_rows = []
     
-    # Get static variables (not time-varying)
-    static_vars = ['subject_id', 'Spont_Survival21', 'Sex', 'Hispanic', 'Pre_NAC_IV']
-    static_data = df[static_vars].copy()
-    
-    # Process each subject
-    for idx, row in df.iterrows():
+    # Process each subject-day combination
+    for idx, row in df_long.iterrows():
         subject_id = row['subject_id']
-        spont_survival = row['Spont_Survival21']
+        current_day = int(row['day'])
         
-        # Get static variables for this subject
-        static_row = static_data[static_data['subject_id'] == subject_id].iloc[0]
+        # Get all data for this subject
+        subject_data = subject_groups.get_group(subject_id)
         
-        # Process each day (1-7)
-        for day in range(1, 8):
-            day_str = str(day)
-            
-            # Create base vignette row
-            vignette = {
-                'subject_id': subject_id,
-                'day': day,
-                'Spont_Survival21': spont_survival,
-                'Sex': static_row['Sex'],
-                'Sex_text': transform_categorical(static_row['Sex'], 'Sex'),
-                'Hispanic': static_row['Hispanic'],
-                'Hispanic_text': transform_categorical(static_row['Hispanic'], 'Hispanic'),
-                'Pre_NAC_IV': static_row['Pre_NAC_IV'],
-                'Pre_NAC_IV_text': transform_categorical(static_row['Pre_NAC_IV'], 'Pre_NAC_IV')
-            }
-            
-            # Add binned values for this day
-            for var in continuous_vars:
-                day_col = f"{var}_day_{day_str}"
-                if day_col in df.columns:
-                    value = row[day_col]
-                    if not pd.isna(value):
-                        # Use original value for accurate binning, then round for storage
-                        binned = bin_continuous_value(value, var)
-                        value_rounded = round(float(value), 2)
-                        vignette[f"{var}_binned"] = binned
-                        vignette[f"{var}_value"] = value_rounded
-                    else:
-                        vignette[f"{var}_binned"] = None
-                        vignette[f"{var}_value"] = None
+        # Create base vignette row
+        vignette = {
+            'subject_id': subject_id,
+            'day': current_day,
+            'Spont_Survival21': row['Spont_Survival21'],
+            'Sex': row['male'],  # Keep as 'male' in output to match expected format
+            'Sex_text': transform_categorical(row['male'], 'Sex'),
+            'Hispanic': row['Hispanic'],
+            'Hispanic_text': transform_categorical(row['Hispanic'], 'Hispanic'),
+            'Pre_NAC_IV': row['Pre_NAC_IV'],
+            'Pre_NAC_IV_text': transform_categorical(row['Pre_NAC_IV'], 'Pre_NAC_IV')
+        }
+        
+        # Add binned values for continuous variables
+        for var in BINNING_THRESHOLDS.keys():
+            if var in row.index:
+                value = row[var]
+                if not pd.isna(value):
+                    binned = bin_continuous_value(value, var)
+                    value_rounded = round(float(value), 2)
+                    vignette[f"{var}_binned"] = binned
+                    vignette[f"{var}_value"] = value_rounded
                 else:
                     vignette[f"{var}_binned"] = None
                     vignette[f"{var}_value"] = None
-            
-            # Add trend information (comparing to previous day)
-            if day > 1:
-                prev_day = str(day - 1)
-                for var in continuous_vars:
-                    current_col = f"{var}_day_{day_str}"
-                    prev_col = f"{var}_day_{prev_day}"
+        
+        # Add trend information (comparing to previous day)
+        prev_day_data = subject_data[subject_data['day'] == current_day - 1]
+        if not prev_day_data.empty:
+            prev_row = prev_day_data.iloc[0]
+            for var in BINNING_THRESHOLDS.keys():
+                if var in row.index and var in prev_row.index:
+                    current_val = row[var]
+                    prev_val = prev_row[var]
                     
-                    if current_col in df.columns and prev_col in df.columns:
-                        current_val = row[current_col]
-                        prev_val = row[prev_col]
-                        
-                        if not pd.isna(current_val) and not pd.isna(prev_val):
-                            trend = calculate_trend_detailed(current_val, prev_val, 1, var)
-                            vignette[f"{var}_trend"] = trend
-                        else:
-                            vignette[f"{var}_trend"] = None
+                    if not pd.isna(current_val) and not pd.isna(prev_val):
+                        trend = calculate_trend_detailed(current_val, prev_val, 1, var)
+                        vignette[f"{var}_trend"] = trend
                     else:
                         vignette[f"{var}_trend"] = None
-            else:
-                # Day 1 (Admission) has no trend
-                for var in continuous_vars:
-                    vignette[f"{var}_trend"] = None
-            
-            # Add cumulative trend history (all trends from day 1 to current day)
-            for var in continuous_vars:
-                trend_history_parts = []
+        else:
+            # Day 1 (Admission) has no trend
+            for var in BINNING_THRESHOLDS.keys():
+                vignette[f"{var}_trend"] = None
+        
+        # Add cumulative trend history (all trends from day 1 to current day)
+        trend_history_parts = []
+        subject_days = sorted(subject_data['day'].unique())
+        
+        if current_day > 1:
+            # Build cumulative history from day 1 to current day
+            for d_idx in range(len(subject_days) - 1):
+                curr_d = subject_days[d_idx + 1]
+                prev_d = subject_days[d_idx]
                 
-                if day > 1:
-                    # Build cumulative history from day 1 to current day
-                    for d in range(1, day):
-                        prev_day_str = str(d)
-                        curr_day_str = str(d + 1)
+                if curr_d <= current_day:
+                    curr_data = subject_data[subject_data['day'] == curr_d]
+                    prev_data = subject_data[subject_data['day'] == prev_d]
+                    
+                    if not curr_data.empty and not prev_data.empty:
+                        curr_row = curr_data.iloc[0]
+                        prev_row = prev_data.iloc[0]
                         
-                        prev_col = f"{var}_day_{prev_day_str}"
-                        curr_col = f"{var}_day_{curr_day_str}"
-                        
-                        if prev_col in df.columns and curr_col in df.columns:
-                            prev_val = row[prev_col]
-                            curr_val = row[curr_col]
-                            
-                            if not pd.isna(prev_val) and not pd.isna(curr_val):
-                                trend = calculate_trend_detailed(curr_val, prev_val, 1, var)
-                                if trend:
-                                    trend_history_parts.append(f"day {d} to day {d+1}: {trend}")
-                
-                if trend_history_parts:
-                    # Join with "then" for sequential narrative
-                    vignette[f"{var}_trend_history"] = ", then ".join(trend_history_parts)
-                else:
-                    vignette[f"{var}_trend_history"] = None
-            
-            # Add binary treatment variables with text labels
-            for treatment in ['Infection', 'Trt_Ventilator', 'Trt_Pressors', 'Trt_CVVH', 'F27Q04']:
-                day_col = f"{treatment}_day_{day_str}"
-                if day_col in df.columns:
-                    value = row[day_col]
-                    vignette[treatment] = value if not pd.isna(value) else None
-                    vignette[f"{treatment}_text"] = transform_categorical(value, treatment)
-                else:
-                    vignette[treatment] = None
-                    vignette[f"{treatment}_text"] = None
-            
-            vignette_rows.append(vignette)
+                        for var in BINNING_THRESHOLDS.keys():
+                            if var in curr_row.index and var in prev_row.index:
+                                curr_val = curr_row[var]
+                                prev_val = prev_row[var]
+                                
+                                if not pd.isna(curr_val) and not pd.isna(prev_val):
+                                    trend = calculate_trend_detailed(curr_val, prev_val, 1, var)
+                                    if trend:
+                                        trend_history_parts.append(f"day {int(prev_d)} to day {int(curr_d)}: {trend}")
+        
+        if trend_history_parts:
+            # Join with "then" for sequential narrative
+            vignette['trend_history'] = ", then ".join(trend_history_parts)
+        else:
+            vignette['trend_history'] = None
+        
+        # Add binary treatment variables with text labels
+        for treatment in ['Infection', 'Trt_Ventilator', 'Trt_Pressors', 'Trt_CVVH', 'F27Q04']:
+            if treatment in row.index:
+                value = row[treatment]
+                vignette[treatment] = value if not pd.isna(value) else None
+                vignette[f"{treatment}_text"] = transform_categorical(value, treatment)
+        
+        vignette_rows.append(vignette)
     
     vignettes_df = pd.DataFrame(vignette_rows)
     logger.info(f"Created {len(vignettes_df)} vignettes for {vignettes_df['subject_id'].nunique()} subjects")
@@ -777,13 +841,19 @@ def create_vignettes(df: pd.DataFrame) -> pd.DataFrame:
     # Filter rows where all specified columns are null/NaN
     initial_count = len(vignettes_df)
     mask = vignettes_df[existing_filter_columns].notna().any(axis=1)
+    
+    # Log removed rows
+    removed_rows = vignettes_df[~mask]
+    for idx, row in removed_rows.iterrows():
+        logger.info(f"Removed row: subject_id={int(row['subject_id'])}, day={int(row['day'])}")
+    
     vignettes_df = vignettes_df[mask].copy()
     removed_count = initial_count - len(vignettes_df)
     logger.info(f"Removed {removed_count} rows with all empty continuous variables")
     logger.info(f"Remaining vignettes: {len(vignettes_df)}")
     
     # Fill missing values from previous days (AFTER filtering)
-    vignettes_df = fill_missing_values_from_previous_days(vignettes_df, df)
+    vignettes_df = fill_missing_values_from_previous_days_long(vignettes_df, df_long)
     
     # Create comprehensive clinical vignette text
     logger.info("Creating comprehensive clinical vignettes...")
@@ -1010,15 +1080,14 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
 def main():
     logger.info("Starting vignette creation process")
     
-    # Read merged subjects
-    # input_file = 'merged_subjects.xlsx'
-    input_file = 'ALFSG_12MAR2025_processed_wide.xlsx'
+    # Read ALFSG processed data (long format)
+    input_file = 'ALFSG_12MAR2025_processed.xlsx'
     logger.info(f"Reading {input_file}")
-    df = pd.read_excel(input_file)
-    logger.info(f"Input shape: {df.shape}")
+    df_long = pd.read_excel(input_file)
+    logger.info(f"Input shape: {df_long.shape}")
     
-    # Create vignettes
-    vignettes_df = create_vignettes(df)
+    # Create vignettes directly from long format
+    vignettes_df = create_vignettes_from_long(df_long)
     
     # Save output
     output_file = 'clinical_vignettes.xlsx'
