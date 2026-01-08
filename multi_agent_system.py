@@ -4,6 +4,7 @@ import logging
 import argparse
 import pandas as pd
 import time
+import re
 from typing import Literal, TypedDict, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
@@ -15,6 +16,12 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def clean_json_string(json_str: str) -> str:
+    """Remove invalid control characters from JSON string that can cause parsing errors."""
+    # Remove control characters except \t, \n, \r (valid whitespace in JSON)
+    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', json_str)
+    return cleaned
 
 # Pydantic models for structured outputs
 class AgentDecision(BaseModel):
@@ -362,68 +369,66 @@ You must strictly adhere to this JSON format:
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
-    try:
-        client, deployment_name, client_type = get_azure_openai_client()
-        logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
-        # Try JSON mode first
-        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    client, deployment_name, client_type = get_azure_openai_client()
+    logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
+    # Try JSON mode first
+    response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    
+    # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+    if isinstance(response, AgentDecision):
+        decision = response
+    else:
+        # Response is a string, need to parse it
+        response_text = response
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
-        if isinstance(response, AgentDecision):
-            decision = response
-        else:
-            # Response is a string, need to parse it
-            response_text = response
-            if not response_text or not response_text.strip():
-                logger.error(f"Empty response from LLM. Client type: {client_type}")
-                raise ValueError("Empty response from LLM")
-            
-            # Try to extract JSON from response (in case there's extra text)
-            response_text = response_text.strip()
-            
-            # Try to find JSON object in response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                response_text = response_text[json_start:json_end]
-            else:
-                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-            
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            json_part = response_text[json_start:json_end]
+            json_part = clean_json_string(json_part)
             try:
-                response_json = json.loads(response_text)
-                # Validate that we have the required fields before creating the model
+                response_json = json.loads(json_part)
+                # Validate that we have the required fields
                 required_fields = ['decision', 'confidence', 'reasoning']
-                if not all(field in response_json for field in required_fields):
-                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
-                    logger.error(f"Full response text: {response_text[:2000]}")
-                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
-                
-                decision = AgentDecision(**response_json)
-            except Exception as parse_error:
-                logger.error(f"Failed to parse JSON response: {parse_error}")
-                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
-                raise
-        
-        state['hepatologist_output'] = decision
-        logger.info(f"Hepatologist decision: {decision.decision}")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in Hepatologist agent: {e}")
-        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
-        raise
-    except Exception as e:
-        logger.error(f"Error in Hepatologist agent: {e}")
-        # Fallback to basic completion
-        try:
-            client, deployment_name, client_type = get_azure_openai_client()
-            logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
-            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
-            # Parse response manually
+                if all(field in response_json for field in required_fields):
+                    decision = AgentDecision(**response_json)
+                else:
+                    raise ValueError(f"Missing required fields: {required_fields}")
+            except Exception as e:
+                logger.warning(f"JSON parsing failed for Hepatologist: {e}, using fallback")
+                # Fallback to non-JSON mode
+                client, deployment_name, client_type = get_azure_openai_client()
+                logger.info(f"Fallback: Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
+                response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
+                decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+                confidence_val = 0.7
+                if "confidence" in response_text.lower():
+                    conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                    if conf_match:
+                        try:
+                            confidence_val = float(conf_match.group(1))
+                            if confidence_val > 1.0:
+                                confidence_val = confidence_val / 100.0
+                            confidence_val = max(0.0, min(1.0, confidence_val))
+                        except:
+                            pass
+                decision = AgentDecision(
+                    decision=decision_val,
+                    confidence=confidence_val,
+                    reasoning=response_text
+                )
+        else:
+            logger.warning(f"No JSON object found in response, parsing as text")
+            # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            # Extract confidence if mentioned, otherwise default to 0.7
             confidence_val = 0.7
             if "confidence" in response_text.lower():
-                import re
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
                     try:
@@ -433,19 +438,15 @@ Based on this clinical information, predict whether this patient will achieve sp
                         confidence_val = max(0.0, min(1.0, confidence_val))
                     except:
                         pass
-            state['hepatologist_output'] = AgentDecision(
+            decision = AgentDecision(
                 decision=decision_val,
                 confidence=confidence_val,
                 reasoning=response_text
             )
-        except Exception as e2:
-            logger.error(f"Fallback also failed: {e2}")
-            state['hepatologist_output'] = AgentDecision(
-                decision="No",
-                confidence=0.0,
-                reasoning=f"Error processing: {str(e2)}"
-            )
-    
+        
+        state['hepatologist_output'] = decision
+        logger.info(f"Hepatologist decision: {decision.decision}")
+        
     return state
 
 def critical_care_agent(state: AgentState) -> AgentState:
@@ -516,66 +517,66 @@ You must strictly adhere to this JSON format:
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
-    try:
-        client, deployment_name, client_type = get_azure_openai_client()
-        logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
-        # Try JSON mode first
-        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    client, deployment_name, client_type = get_azure_openai_client()
+    logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
+    # Try JSON mode first
+    response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    
+    # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+    if isinstance(response, AgentDecision):
+        decision = response
+    else:
+        # Response is a string, need to parse it
+        response_text = response
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
-        if isinstance(response, AgentDecision):
-            decision = response
-        else:
-            # Response is a string, need to parse it
-            response_text = response
-            if not response_text or not response_text.strip():
-                logger.error(f"Empty response from LLM. Client type: {client_type}")
-                raise ValueError("Empty response from LLM")
-            
-            # Try to extract JSON from response (in case there's extra text)
-            response_text = response_text.strip()
-            
-            # Try to find JSON object in response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                response_text = response_text[json_start:json_end]
-            else:
-                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-            
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            json_part = response_text[json_start:json_end]
+            json_part = clean_json_string(json_part)
             try:
-                response_json = json.loads(response_text)
-                # Validate that we have the required fields before creating the model
+                response_json = json.loads(json_part)
+                # Validate that we have the required fields
                 required_fields = ['decision', 'confidence', 'reasoning']
-                if not all(field in response_json for field in required_fields):
-                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
-                    logger.error(f"Full response text: {response_text[:2000]}")
-                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
-                
-                decision = AgentDecision(**response_json)
-            except Exception as parse_error:
-                logger.error(f"Failed to parse JSON response: {parse_error}")
-                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
-                raise
-        
-        state['critical_care_output'] = decision
-        logger.info(f"Critical Care decision: {decision.decision}")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in Critical Care agent: {e}")
-        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
-        raise
-    except Exception as e:
-        logger.error(f"Error in Critical Care agent: {e}")
-        try:
-            client, deployment_name, client_type = get_azure_openai_client()
-            logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
-            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
+                if all(field in response_json for field in required_fields):
+                    decision = AgentDecision(**response_json)
+                else:
+                    raise ValueError(f"Missing required fields: {required_fields}")
+            except Exception as e:
+                logger.warning(f"JSON parsing failed for Critical Care: {e}, using fallback")
+                # Fallback to non-JSON mode
+                client, deployment_name, client_type = get_azure_openai_client()
+                logger.info(f"Fallback: Calling LLM for Critical Care agent with deployment name: {deployment_name}")
+                response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
+                decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+                confidence_val = 0.7
+                if "confidence" in response_text.lower():
+                    conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                    if conf_match:
+                        try:
+                            confidence_val = float(conf_match.group(1))
+                            if confidence_val > 1.0:
+                                confidence_val = confidence_val / 100.0
+                            confidence_val = max(0.0, min(1.0, confidence_val))
+                        except:
+                            pass
+                decision = AgentDecision(
+                    decision=decision_val,
+                    confidence=confidence_val,
+                    reasoning=response_text
+                )
+        else:
+            logger.warning(f"No JSON object found in response, parsing as text")
+            # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            # Extract confidence if mentioned, otherwise default to 0.7
             confidence_val = 0.7
             if "confidence" in response_text.lower():
-                import re
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
                     try:
@@ -585,19 +586,15 @@ Based on this clinical information, predict whether this patient will achieve sp
                         confidence_val = max(0.0, min(1.0, confidence_val))
                     except:
                         pass
-            state['critical_care_output'] = AgentDecision(
+            decision = AgentDecision(
                 decision=decision_val,
                 confidence=confidence_val,
                 reasoning=response_text
             )
-        except Exception as e2:
-            logger.error(f"Fallback also failed: {e2}")
-            state['critical_care_output'] = AgentDecision(
-                decision="No",
-                confidence=0.0,
-                reasoning=f"Error processing: {str(e2)}"
-            )
-    
+        
+        state['critical_care_output'] = decision
+        logger.info(f"Critical Care decision: {decision.decision}")
+        
     return state
 
 def transplant_surgeon_agent(state: AgentState) -> AgentState:
@@ -669,66 +666,66 @@ You must strictly adhere to this JSON format:
 
 Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
 
-    try:
-        client, deployment_name, client_type = get_azure_openai_client()
-        logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")    
-        # Try JSON mode first
-        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    client, deployment_name, client_type = get_azure_openai_client()
+    logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")    
+    # Try JSON mode first
+    response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
+    
+    # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+    if isinstance(response, AgentDecision):
+        decision = response
+    else:
+        # Response is a string, need to parse it
+        response_text = response
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
-        if isinstance(response, AgentDecision):
-            decision = response
-        else:
-            # Response is a string, need to parse it
-            response_text = response
-            if not response_text or not response_text.strip():
-                logger.error(f"Empty response from LLM. Client type: {client_type}")
-                raise ValueError("Empty response from LLM")
-            
-            # Try to extract JSON from response (in case there's extra text)
-            response_text = response_text.strip()
-            
-            # Try to find JSON object in response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                response_text = response_text[json_start:json_end]
-            else:
-                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-            
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            json_part = response_text[json_start:json_end]
+            json_part = clean_json_string(json_part)
             try:
-                response_json = json.loads(response_text)
-                # Validate that we have the required fields before creating the model
+                response_json = json.loads(json_part)
+                # Validate that we have the required fields
                 required_fields = ['decision', 'confidence', 'reasoning']
-                if not all(field in response_json for field in required_fields):
-                    logger.error(f"Missing required fields in JSON response. Got: {list(response_json.keys())}")
-                    logger.error(f"Full response text: {response_text[:2000]}")
-                    raise ValueError(f"JSON response missing required fields. Expected: {required_fields}, Got: {list(response_json.keys())}")
-                
-                decision = AgentDecision(**response_json)
-            except Exception as parse_error:
-                logger.error(f"Failed to parse JSON response: {parse_error}")
-                logger.error(f"Response text (first 2000 chars): {response_text[:2000]}")
-                raise
-        
-        state['transplant_surgeon_output'] = decision
-        logger.info(f"Transplant Surgeon decision: {decision.decision}")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in Transplant Surgeon agent: {e}")
-        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
-        raise
-    except Exception as e:
-        logger.error(f"Error in Transplant Surgeon agent: {e}")
-        try:
-            client, deployment_name, client_type = get_azure_openai_client()
-            logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")
-            response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
+                if all(field in response_json for field in required_fields):
+                    decision = AgentDecision(**response_json)
+                else:
+                    raise ValueError(f"Missing required fields: {required_fields}")
+            except Exception as e:
+                logger.warning(f"JSON parsing failed for Transplant Surgeon: {e}, using fallback")
+                # Fallback to non-JSON mode
+                client, deployment_name, client_type = get_azure_openai_client()
+                logger.info(f"Fallback: Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")
+                response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
+                decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
+                confidence_val = 0.7
+                if "confidence" in response_text.lower():
+                    conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
+                    if conf_match:
+                        try:
+                            confidence_val = float(conf_match.group(1))
+                            if confidence_val > 1.0:
+                                confidence_val = confidence_val / 100.0
+                            confidence_val = max(0.0, min(1.0, confidence_val))
+                        except:
+                            pass
+                decision = AgentDecision(
+                    decision=decision_val,
+                    confidence=confidence_val,
+                    reasoning=response_text
+                )
+        else:
+            logger.warning(f"No JSON object found in response, parsing as text")
+            # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            # Extract confidence if mentioned, otherwise default to 0.7
             confidence_val = 0.7
             if "confidence" in response_text.lower():
-                import re
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
                     try:
@@ -738,19 +735,15 @@ Based on this clinical information, predict whether this patient will achieve sp
                         confidence_val = max(0.0, min(1.0, confidence_val))
                     except:
                         pass
-            state['transplant_surgeon_output'] = AgentDecision(
+            decision = AgentDecision(
                 decision=decision_val,
                 confidence=confidence_val,
                 reasoning=response_text
             )
-        except Exception as e2:
-            logger.error(f"Fallback also failed: {e2}")
-            state['transplant_surgeon_output'] = AgentDecision(
-                decision="No",
-                confidence=0.0,
-                reasoning=f"Error processing: {str(e2)}"
-            )
-    
+        
+        state['transplant_surgeon_output'] = decision
+        logger.info(f"Transplant Surgeon decision: {decision.decision}")
+        
     return state
 
 def final_synthesis(state: AgentState) -> AgentState:
@@ -811,41 +804,57 @@ Weighted Analysis:
 
 Provide your final synthesis and prediction."""
 
-    try:
-        client, deployment_name, client_type = get_azure_openai_client()
-        logger.info(f"Calling LLM for Final Synthesis with deployment name: {deployment_name}")
-        # Use JSON mode for structured output
-        response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
+    client, deployment_name, client_type = get_azure_openai_client()
+    logger.info(f"Calling LLM for Final Synthesis with deployment name: {deployment_name}")
+    # Use JSON mode for structured output
+    response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=FinalPrediction)
+    
+    # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
+    if isinstance(response, FinalPrediction):
+        prediction = response
+    else:
+        # Response is a string, need to parse it
+        response_text = response
+        if not response_text or not response_text.strip():
+            logger.error(f"Empty response from LLM. Client type: {client_type}")
+            raise ValueError("Empty response from LLM")
         
-        # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
-        if isinstance(response, FinalPrediction):
-            prediction = response
+        response_text = response_text.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            json_part = response_text[json_start:json_end]
+            json_part = clean_json_string(json_part)
+            try:
+                response_json = json.loads(json_part)
+                # Handle case where LLM returns "decision" instead of "prediction" (for FinalPrediction)
+                if "decision" in response_json and "prediction" not in response_json:
+                    logger.warning("LLM returned 'decision' instead of 'prediction', converting...")
+                    response_json["prediction"] = response_json.pop("decision")
+                # Validate required fields
+                required_fields = ['prediction', 'confidence', 'reasoning']
+                if all(field in response_json for field in required_fields):
+                    prediction = FinalPrediction(**response_json)
+                else:
+                    raise ValueError(f"Missing required fields: {required_fields}")
+            except Exception as e:
+                logger.warning(f"JSON parsing failed for Final Synthesis: {e}, using fallback")
+                # Fallback: use weighted decision
+                prediction = FinalPrediction(
+                    prediction=weighted_decision,
+                    confidence=confidence,
+                    reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. JSON parse error: {str(e)}"
+                )
         else:
-            # Response is a string, need to parse it
-            response_text = response
-            if not response_text or not response_text.strip():
-                logger.error(f"Empty response from LLM. Client type: {client_type}")
-                raise ValueError("Empty response from LLM")
-            
-            # Try to extract JSON from response (in case there's extra text)
-            response_text = response_text.strip()
-            
-            # Try to find JSON object in response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                response_text = response_text[json_start:json_end]
-            else:
-                logger.warning(f"No JSON object found in response. Full response: {response_text[:1000]}")
-            
-            response_json = json.loads(response_text)
-            
-            # Handle case where LLM returns "decision" instead of "prediction" (for FinalPrediction)
-            if "decision" in response_json and "prediction" not in response_json:
-                logger.warning("LLM returned 'decision' instead of 'prediction', converting...")
-                response_json["prediction"] = response_json.pop("decision")
-            
-            prediction = FinalPrediction(**response_json)
+            logger.warning(f"No JSON object found in response, using fallback")
+            # Fallback
+            prediction = FinalPrediction(
+                prediction=weighted_decision,
+                confidence=confidence,
+                reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. No JSON found in response."
+            )
         
         # Override with calculated values
         prediction.prediction = weighted_decision
@@ -854,24 +863,6 @@ Provide your final synthesis and prediction."""
         state['final_prediction'] = prediction
         logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
         
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in Final Synthesis: {e}")
-        logger.error(f"Response text that failed to parse: {response[:1000] if isinstance(response, str) else 'N/A'}")
-        # Fallback
-        state['final_prediction'] = FinalPrediction(
-            prediction=weighted_decision,
-            confidence=confidence,
-            reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. JSON parse error: {str(e)}"
-        )
-    except Exception as e:
-        logger.error(f"Error in Final Synthesis: {e}")
-        # Fallback
-        state['final_prediction'] = FinalPrediction(
-            prediction=weighted_decision,
-            confidence=confidence,
-            reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. Error in LLM synthesis: {str(e)}"
-        )
-    
     return state
 
 def create_multi_agent_graph():
