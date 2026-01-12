@@ -626,12 +626,17 @@ def fill_missing_values_from_previous_days(vignettes_df: pd.DataFrame, df: pd.Da
     logger.info("Completed filling missing values from previous days")
     return vignettes_df
 
-def fill_missing_values_from_previous_days_long(vignettes_df: pd.DataFrame, df_long: pd.DataFrame) -> pd.DataFrame:
+def fill_missing_values_from_previous_days_long(vignettes_df: pd.DataFrame, df_long: pd.DataFrame, no_binning: bool = False) -> pd.DataFrame:
     """Fill missing values in vignettes by looking backwards to previous days in long format data.
     
     For each vignette at day i, if a variable value is missing, look backwards
     to day i-1, i-2, etc. until day 1 in the original long format data.
     Only set source_day when value comes from a previous day (not current day).
+    
+    Args:
+        vignettes_df: DataFrame with vignette data
+        df_long: Original long format DataFrame
+        no_binning: If True, skip binning and only fill raw values
     """
     logger.info("Filling missing values from previous days (long format)...")
     
@@ -678,12 +683,15 @@ def fill_missing_values_from_previous_days_long(vignettes_df: pd.DataFrame, df_l
                     
                     if found_value is not None and found_day is not None:
                         # Update the value and binned label
-                        binned = bin_continuous_value(found_value, var)
                         value_rounded = round(float(found_value), 2)
                         
                         vignettes_df.at[idx, value_col] = value_rounded
-                        vignettes_df.at[idx, binned_col] = binned
                         vignettes_df.at[idx, source_day_col] = found_day
+                        
+                        # Only set binned label if no_binning is False
+                        if not no_binning:
+                            binned = bin_continuous_value(found_value, var)
+                            vignettes_df.at[idx, binned_col] = binned
     
     logger.info("Completed filling missing values from previous days (long format)")
     return vignettes_df
@@ -843,7 +851,7 @@ def create_vignettes_from_long(df_long: pd.DataFrame, no_binning: bool = False) 
     logger.info(f"Remaining vignettes: {len(vignettes_df)}")
     
     # Fill missing values from previous days (AFTER filtering)
-    vignettes_df = fill_missing_values_from_previous_days_long(vignettes_df, df_long)
+    vignettes_df = fill_missing_values_from_previous_days_long(vignettes_df, df_long, no_binning=no_binning)
     
     # Create comprehensive clinical vignette text
     logger.info("Creating comprehensive clinical vignettes...")

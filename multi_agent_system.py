@@ -12,7 +12,7 @@ from openai import OpenAI
 from anthropic import AnthropicFoundry, transform_schema
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -329,18 +329,18 @@ Predict whether the patient will achieve **Spontaneous Survival (without transpl
 Follow this systematic approach:
 
 **Step 1: Evaluate Regeneration Markers**
-- Analyze phosphate levels: >5.0 mg/dL suggests regeneration failure; <2.5 mg/dL indicates active regeneration
-- Assess lactate levels: >3.0 mmol/L post-resuscitation indicates metabolic compromise
+- Analyze phosphate levels
+- Assess lactate levels
 - Determine if biochemical trends suggest recovery or deterioration
 
 **Step 2: Assess Synthetic Function**
-- Review INR levels: >6.5 is critical threshold in King's College Criteria
+- Review INR levels
 - Examine prothrombin time trends
 - Evaluate bilirubin levels in context of APAP toxicity
 
 **Step 3: Apply King's College Criteria**
-- Check arterial pH <7.30 (single criterion)
-- Evaluate triad: INR >6.5 AND creatinine >3.4 mg/dL AND encephalopathy grade III/IV
+- Check arterial pH
+- Evaluate triad: INR, creatinine, and encephalopathy grade
 - Determine if criteria are met and implications for prognosis
 
 **Step 4: Consider Treatment Factors**
@@ -472,12 +472,12 @@ Follow this systematic approach:
 
 **Step 1: Evaluate Neurological Status**
 - Assess hepatic encephalopathy grade (0-4 scale)
-- Review ammonia levels: arterial >150 µmol/L high risk, >200 µmol/L critical
+- Review ammonia levels (arterial and venous)
 - Determine neurological trajectory and herniation risk
 
 **Step 2: Review Neuroprotective Measures**
-- Analyze sodium levels: optimal range 145-154 mEq/L for ICP control
-- Evaluate hyponatremia risk (<135 mEq/L increases edema)
+- Analyze sodium levels
+- Evaluate hyponatremia risk
 - Assess effectiveness of neuroprotective strategies
 
 **Step 3: Assess Hemodynamic Stability**
@@ -486,7 +486,7 @@ Follow this systematic approach:
 - Determine cardiovascular support needs
 
 **Step 4: Evaluate Respiratory Function**
-- Analyze PaO₂/FiO₂ ratio for ARDS severity
+- Analyze PaO2/FiO2 ratio for ARDS severity
 - Review ventilator requirements and oxygenation status
 - Assess pulmonary complications
 
@@ -619,12 +619,12 @@ Predict whether the patient will achieve **Spontaneous Survival (without transpl
 Follow this systematic approach:
 
 **Step 1: Apply King's College Criteria**
-- Evaluate arterial pH <7.30 (single criterion for poor prognosis)
-- Assess triad criteria: INR >6.5, creatinine >3.4 mg/dL, encephalopathy grade III/IV
+- Evaluate arterial pH
+- Assess triad criteria: INR, creatinine, encephalopathy grade
 - Determine if criteria indicate need for urgent transplantation
 
 **Step 2: Assess Hemostatic Function**
-- Review platelet count: <20k/µL indicates severe bleeding risk
+- Review platelet count
 - Evaluate INR and coagulation parameters
 - Determine surgical bleeding risk and transfusion requirements
 
@@ -634,7 +634,7 @@ Follow this systematic approach:
 - Determine perioperative renal support needs
 
 **Step 4: Review Respiratory Status**
-- Evaluate PaO₂/FiO₂ ratio for ARDS severity
+- Evaluate PaO2/FiO2 ratio for ARDS severity
 - Assess ventilator dependence and pulmonary reserve
 - Determine if severe ARDS contraindicates transplantation
 
@@ -1013,6 +1013,7 @@ def main():
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
+                'patient_day_vignette': row.get('patient_day_vignette', ''),
                 'final_prediction': final_pred.prediction if final_pred else None,
                 'final_confidence': final_pred.confidence if final_pred else None,
                 'final_reasoning': final_pred.reasoning if final_pred else None,
@@ -1041,6 +1042,7 @@ def main():
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
+                'patient_day_vignette': row.get('patient_day_vignette', ''),
                 'final_prediction': 'Error',
                 'final_confidence': 0.0,
                 'final_reasoning': str(e),

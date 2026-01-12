@@ -215,3 +215,7 @@ __marimo__/
 
 test_azure.py
 test_opus.py
+
+# Node.js
+node_modules
+*.pptx
