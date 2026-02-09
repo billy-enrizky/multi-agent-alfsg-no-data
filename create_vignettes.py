@@ -1,11 +1,74 @@
 import pandas as pd
 import numpy as np
+import math
 import logging
 import argparse
 from typing import Dict, Tuple, Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Etiology classification based on Koch 2016 (ALFSG-PI model)
+# Favorable etiologies have TFS ~68%, unfavorable ~27%
+ETIOLOGY_MAPPING = {
+    'Acetaminophen': ('Acetaminophen', 1),
+    'Any_pregnancy': ('Pregnancy-related', 1),
+    'Shock_ischemi': ('Ischemia/Shock', 1),
+    'HepatitisA': ('Hepatitis A', 1),
+    'Indeterminate': ('Indeterminate', 0),
+    'DILI': ('Drug-induced liver injury', 0),
+    'HepatitisB': ('Hepatitis B', 0),
+    'Autoimmune_he': ('Autoimmune hepatitis', 0),
+    'Other': ('Other', 0),
+    'Wilson': ('Wilson disease', 0),
+    'BCsyndrome': ('Budd-Chiari syndrome', 0),
+    'Mushroom_into': ('Mushroom intoxication', 0),
+    'Other_viruses': ('Other viruses', 0),
+    'HepatitisC': ('Hepatitis C', 0),
+    'HepatitisE': ('Hepatitis E', 0),
+}
+
+
+def compute_alfsg_pi(he_grade, etiology_favorable, vasopressor_use, bilirubin, inr):
+    """Compute ALFSG Prognostic Index (Koch 2016).
+
+    Formula: Logit TFS = 2.67 - 0.95(HE_deep) + 1.56(Etiology_favorable)
+             - 1.25(Vasopressor) - 0.70(ln bilirubin) - 1.35(ln INR)
+    Predicted TFS = 1 / (1 + exp(-Logit TFS))
+
+    Reference: Koch DG, Tillman H, Durkalski V, Lee WM, Reuben A.
+    Development of a model to predict transplant-free survival of patients
+    with acute liver failure. Clin Gastroenterol Hepatol. 2016;14:1199-1206.
+    C statistic: 0.84
+
+    Args:
+        he_grade: Hepatic encephalopathy grade (0-4). Deep = grades 3-4.
+        etiology_favorable: 1 for favorable (APAP, pregnancy, ischemia, hepatitis A),
+                           0 for unfavorable (all others)
+        vasopressor_use: 1 for vasopressor use, 0 for no use
+        bilirubin: Bilirubin in mg/dL (must be > 0)
+        inr: INR value (must be > 0)
+
+    Returns:
+        Predicted transplant-free survival probability (0.0 to 1.0), or None if invalid
+    """
+    if any(pd.isna(x) for x in [he_grade, etiology_favorable, vasopressor_use, bilirubin, inr]):
+        return None
+
+    if bilirubin <= 0 or inr <= 0:
+        return None
+
+    he_deep = 1 if he_grade >= 3 else 0
+
+    logit_tfs = (2.67
+                 - 0.95 * he_deep
+                 + 1.56 * float(etiology_favorable)
+                 - 1.25 * float(vasopressor_use)
+                 - 0.70 * math.log(float(bilirubin))
+                 - 1.35 * math.log(float(inr)))
+
+    predicted_tfs = 1.0 / (1.0 + math.exp(-logit_tfs))
+    return round(predicted_tfs, 4)
 
 # Clinical binning thresholds based on medical literature and README examples
 BINNING_THRESHOLDS = {
@@ -317,15 +380,19 @@ def bin_continuous_value(value: float, var_name: str) -> Optional[str]:
             return None
     
     # Special handling for Ratio_PO2_FiO2 with ARDS classification thresholds
+    # NOTE: In this dataset, PaO2/FiO2 is computed with FiO2 as percentage (e.g., 40 instead of 0.40)
+    # for most values (<10). Values >100 are in standard mmHg units. Convert to standard before binning.
     if var_name == 'Ratio_PO2_FiO2':
-        if value <= 100.0:
-            return labels[0]  # ≤ 100 mmHg: Severe ARDS (Critical instability; high risk of hypoxia-induced cerebral edema)
-        elif 100.0 < value <= 200.0:
-            return labels[1]  # 100 < x ≤ 200 mmHg: Moderate ARDS (Significant respiratory compromise; potential contraindication for immediate transport/surgery)
-        elif 200.0 < value <= 300.0:
-            return labels[2]  # 200 < x ≤ 300 mmHg: Mild ARDS (Early sign of deterioration; warning for AI monitoring)
-        elif value > 300.0:
-            return labels[3]  # > 300 mmHg: No ARDS (Physiologically stable respiratory status)
+        # Convert to standard P/F ratio if in non-standard format (FiO2 as percentage)
+        pf_standard = value * 100.0 if value < 10.0 else value
+        if pf_standard <= 100.0:
+            return labels[0]  # Severe ARDS
+        elif 100.0 < pf_standard <= 200.0:
+            return labels[1]  # Moderate ARDS
+        elif 200.0 < pf_standard <= 300.0:
+            return labels[2]  # Mild ARDS
+        elif pf_standard > 300.0:
+            return labels[3]  # No ARDS
         else:
             return None
     
@@ -732,6 +799,10 @@ def create_vignettes_from_long(df_long: pd.DataFrame, no_binning: bool = False) 
         subject_data = subject_groups.get_group(subject_id)
         
         # Create base vignette row
+        etiology = row.get('etiology', None)
+        etiology_text = row.get('etiology_text', None)
+        etiology_favorable = row.get('etiology_favorable', None)
+
         vignette = {
             'subject_id': subject_id,
             'day': current_day,
@@ -741,7 +812,10 @@ def create_vignettes_from_long(df_long: pd.DataFrame, no_binning: bool = False) 
             'Hispanic': row['Hispanic'],
             'Hispanic_text': transform_categorical(row['Hispanic'], 'Hispanic'),
             'Pre_NAC_IV': row['Pre_NAC_IV'],
-            'Pre_NAC_IV_text': transform_categorical(row['Pre_NAC_IV'], 'Pre_NAC_IV')
+            'Pre_NAC_IV_text': transform_categorical(row['Pre_NAC_IV'], 'Pre_NAC_IV'),
+            'etiology': etiology if pd.notna(etiology) else None,
+            'etiology_text': etiology_text if pd.notna(etiology_text) else None,
+            'etiology_favorable': etiology_favorable if pd.notna(etiology_favorable) else None,
         }
         
         # Add binned values for continuous variables
@@ -821,8 +895,36 @@ def create_vignettes_from_long(df_long: pd.DataFrame, no_binning: bool = False) 
                 vignette[f"{treatment}_text"] = transform_categorical(value, treatment)
         
         vignette_rows.append(vignette)
-    
+
     vignettes_df = pd.DataFrame(vignette_rows)
+
+    # Compute ALFSG-PI for each vignette row (Koch 2016)
+    logger.info("Computing ALFSG Prognostic Index (Koch 2016) for each vignette...")
+    vignettes_df['alfsg_pi_score'] = vignettes_df.apply(
+        lambda r: compute_alfsg_pi(
+            he_grade=r.get('F27Q04'),
+            etiology_favorable=r.get('etiology_favorable'),
+            vasopressor_use=r.get('Trt_Pressors'),
+            bilirubin=r.get('Bilirubin_value'),
+            inr=r.get('INR1_value')
+        ), axis=1
+    )
+    # Categorize ALFSG-PI risk
+    def categorize_alfsg_pi(score):
+        if pd.isna(score):
+            return None
+        if score >= 0.80:
+            return 'Favorable'
+        elif score >= 0.50:
+            return 'Intermediate'
+        else:
+            return 'Poor'
+
+    vignettes_df['alfsg_pi_category'] = vignettes_df['alfsg_pi_score'].apply(categorize_alfsg_pi)
+    pi_computed = vignettes_df['alfsg_pi_score'].notna().sum()
+    pi_missing = vignettes_df['alfsg_pi_score'].isna().sum()
+    logger.info(f"ALFSG-PI computed for {pi_computed} vignettes, missing for {pi_missing}")
+
     logger.info(f"Created {len(vignettes_df)} vignettes for {vignettes_df['subject_id'].nunique()} subjects")
     logger.info(f"Vignette shape: {vignettes_df.shape}")
     
@@ -872,6 +974,20 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
     # Patient identification
     parts.append(f"Patient {int(row['subject_id'])} on Day {int(row['day'])}")
     
+    # Etiology and ALFSG-PI section
+    etiology_text = row.get('etiology_text')
+    etiology_favorable = row.get('etiology_favorable')
+    alfsg_pi_score = row.get('alfsg_pi_score')
+    alfsg_pi_category = row.get('alfsg_pi_category')
+
+    if pd.notna(etiology_text):
+        prognosis_group = "Favorable prognosis group" if etiology_favorable == 1 else "Unfavorable prognosis group"
+        parts.append(f"Etiology: {etiology_text} ({prognosis_group})")
+
+    if pd.notna(alfsg_pi_score):
+        pi_pct = round(float(alfsg_pi_score) * 100, 1)
+        parts.append(f"ALFSG Prognostic Index (ALFSG-PI): {pi_pct}% predicted transplant-free survival ({alfsg_pi_category} prognosis)")
+
     # Demographics section
     demo_parts = []
     if pd.notna(row.get('Sex_text')):
@@ -883,7 +999,7 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
             demo_parts.append("has received prior IV N-acetylcysteine")
         else:
             demo_parts.append("has not received prior IV N-acetylcysteine")
-    
+
     if demo_parts:
         parts.append("Patient " + ", ".join(demo_parts) + ".")
     
@@ -951,26 +1067,28 @@ def create_comprehensive_vignette(row: pd.Series) -> str:
     # Clinical status and treatments
     clinical_parts = []
     
-    if pd.notna(row.get('Infection_text')):
-        if 'yes' in row['Infection_text'].lower() or 'documented' in row['Infection_text'].lower():
+    # Use numeric values directly to avoid text-matching bugs
+    # (e.g., "No infection documented" contains "documented", "Not receiving CVVH" contains "receiving")
+    if pd.notna(row.get('Infection')):
+        if float(row['Infection']) == 1:
             clinical_parts.append("has documented infection")
         else:
             clinical_parts.append("has no documented infection")
-    
-    if pd.notna(row.get('Trt_Ventilator_text')):
-        if 'yes' in row['Trt_Ventilator_text'].lower() or 'receiving' in row['Trt_Ventilator_text'].lower():
+
+    if pd.notna(row.get('Trt_Ventilator')):
+        if float(row['Trt_Ventilator']) == 1:
             clinical_parts.append("is receiving mechanical ventilation")
         else:
             clinical_parts.append("is not on mechanical ventilation")
-    
-    if pd.notna(row.get('Trt_Pressors_text')):
-        if 'yes' in row['Trt_Pressors_text'].lower() or 'receiving' in row['Trt_Pressors_text'].lower():
+
+    if pd.notna(row.get('Trt_Pressors')):
+        if float(row['Trt_Pressors']) == 1:
             clinical_parts.append("is receiving vasopressor support")
         else:
             clinical_parts.append("is not receiving vasopressor support")
-    
-    if pd.notna(row.get('Trt_CVVH_text')):
-        if 'yes' in row['Trt_CVVH_text'].lower() or 'receiving' in row['Trt_CVVH_text'].lower():
+
+    if pd.notna(row.get('Trt_CVVH')):
+        if float(row['Trt_CVVH']) == 1:
             clinical_parts.append("is receiving continuous renal replacement therapy (CVVH)")
         else:
             clinical_parts.append("is not receiving CVVH")
@@ -996,7 +1114,21 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     
     # Patient identification
     parts.append(f"Patient {int(row['subject_id'])} on Day {int(row['day'])}")
-    
+
+    # Etiology and ALFSG-PI section (included for all agents)
+    etiology_text = row.get('etiology_text')
+    etiology_favorable = row.get('etiology_favorable')
+    alfsg_pi_score = row.get('alfsg_pi_score')
+    alfsg_pi_category = row.get('alfsg_pi_category')
+
+    if pd.notna(etiology_text):
+        prognosis_group = "Favorable prognosis group" if etiology_favorable == 1 else "Unfavorable prognosis group"
+        parts.append(f"Etiology: {etiology_text} ({prognosis_group})")
+
+    if pd.notna(alfsg_pi_score):
+        pi_pct = round(float(alfsg_pi_score) * 100, 1)
+        parts.append(f"ALFSG Prognostic Index (ALFSG-PI): {pi_pct}% predicted transplant-free survival ({alfsg_pi_category} prognosis)")
+
     # Demographics section (only if agent has these variables)
     demo_parts = []
     if 'Sex' in agent_vars['categorical'] and pd.notna(row.get('Sex_text')):
@@ -1074,26 +1206,27 @@ def create_agent_vignette(row: pd.Series, agent_name: str) -> str:
     # Clinical status and treatments (only agent's assigned variables)
     clinical_parts = []
     
-    if 'Infection' in agent_vars['categorical'] and pd.notna(row.get('Infection_text')):
-        if 'yes' in row['Infection_text'].lower() or 'documented' in row['Infection_text'].lower():
+    # Use numeric values directly to avoid text-matching bugs
+    if 'Infection' in agent_vars['categorical'] and pd.notna(row.get('Infection')):
+        if float(row['Infection']) == 1:
             clinical_parts.append("has documented infection")
         else:
             clinical_parts.append("has no documented infection")
-    
-    if 'Trt_Ventilator' in agent_vars['categorical'] and pd.notna(row.get('Trt_Ventilator_text')):
-        if 'yes' in row['Trt_Ventilator_text'].lower() or 'receiving' in row['Trt_Ventilator_text'].lower():
+
+    if 'Trt_Ventilator' in agent_vars['categorical'] and pd.notna(row.get('Trt_Ventilator')):
+        if float(row['Trt_Ventilator']) == 1:
             clinical_parts.append("is receiving mechanical ventilation")
         else:
             clinical_parts.append("is not on mechanical ventilation")
-    
-    if 'Trt_Pressors' in agent_vars['categorical'] and pd.notna(row.get('Trt_Pressors_text')):
-        if 'yes' in row['Trt_Pressors_text'].lower() or 'receiving' in row['Trt_Pressors_text'].lower():
+
+    if 'Trt_Pressors' in agent_vars['categorical'] and pd.notna(row.get('Trt_Pressors')):
+        if float(row['Trt_Pressors']) == 1:
             clinical_parts.append("is receiving vasopressor support")
         else:
             clinical_parts.append("is not receiving vasopressor support")
-    
-    if 'Trt_CVVH' in agent_vars['categorical'] and pd.notna(row.get('Trt_CVVH_text')):
-        if 'yes' in row['Trt_CVVH_text'].lower() or 'receiving' in row['Trt_CVVH_text'].lower():
+
+    if 'Trt_CVVH' in agent_vars['categorical'] and pd.notna(row.get('Trt_CVVH')):
+        if float(row['Trt_CVVH']) == 1:
             clinical_parts.append("is receiving continuous renal replacement therapy (CVVH)")
         else:
             clinical_parts.append("is not receiving CVVH")
@@ -1115,13 +1248,35 @@ def main():
     args = parser.parse_args()
     
     logger.info("Starting vignette creation process")
-    
+
     # Read ALFSG processed data (long format)
     input_file = 'ALFSG_12MAR2025_processed.xlsx'
     logger.info(f"Reading {input_file}")
     df_long = pd.read_excel(input_file)
     logger.info(f"Input shape: {df_long.shape}")
-    
+
+    # Join etiology from subjects file
+    subjects_file = 'subjects_unique_08NOV2024.xlsx'
+    logger.info(f"Reading etiology data from {subjects_file}")
+    subjects_df = pd.read_excel(subjects_file, usecols=['subject_id', 'site_dx'])
+
+    # Map etiology to text and favorable/unfavorable classification (Koch 2016)
+    subjects_df['etiology_text'] = subjects_df['site_dx'].map(
+        lambda x: ETIOLOGY_MAPPING.get(x, ('Unknown', 0))[0]
+    )
+    subjects_df['etiology_favorable'] = subjects_df['site_dx'].map(
+        lambda x: ETIOLOGY_MAPPING.get(x, ('Unknown', 0))[1]
+    )
+    subjects_df = subjects_df.rename(columns={'site_dx': 'etiology'})
+
+    # Merge etiology into long format data
+    df_long = df_long.merge(subjects_df, on='subject_id', how='left')
+    etiology_counts = df_long.groupby('etiology')['subject_id'].nunique()
+    logger.info(f"Etiology distribution (unique subjects):\n{etiology_counts}")
+    favorable_count = df_long[df_long['etiology_favorable'] == 1]['subject_id'].nunique()
+    unfavorable_count = df_long[df_long['etiology_favorable'] == 0]['subject_id'].nunique()
+    logger.info(f"Favorable etiology: {favorable_count} subjects, Unfavorable: {unfavorable_count} subjects")
+
     # Create vignettes directly from long format
     vignettes_df = create_vignettes_from_long(df_long, no_binning=args.no_binning)
     
@@ -1139,7 +1294,7 @@ def main():
     logger.info(f"Days per subject: {len(vignettes_df) / vignettes_df['subject_id'].nunique():.1f}")
     logger.info(f"\nSample columns: {list(vignettes_df.columns[:15])}...")
     logger.info(f"\nSample vignette (first row):")
-    print(vignettes_df.iloc[0][:20].to_dict())
+    logger.info(vignettes_df.iloc[0][:20].to_dict())
 
 if __name__ == '__main__':
     main()
