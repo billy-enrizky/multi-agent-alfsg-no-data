@@ -952,12 +952,14 @@ The strongest predictor of ALF outcome is whether organ system improvement is CO
 **OVERRIDE CONDITIONS (context-dependent):**
 - EXTREME BILIRUBIN (context-dependent): Bilirubin >15 mg/dL in APAP (approaching non-APAP KCC threshold of 17 mg/dL) = typically catastrophic excretory failure (typical lag ~8-12 mg/dL). Predict death UNLESS full concordant recovery is present across ALL other systems (HE grade 0-1, INR < 1.5, lactate < 2.0, no vasopressors, no ventilation, no infections). If bilirubin >15 AND any other system shows discordance, predict death.
 - PERSISTENT GRADE 4 HE (duration-based): APAP recovery clears HE within 2-3 days. Grade 4 HE persisting at Day 4+ in APAP (or Day 5+ in non-APAP) = predict death from cerebral edema/herniation (28% of ALF deaths) UNLESS liver function has FULLY normalized (INR < 1.5, bilirubin < 5 mg/dL, lactate < 2.0, no infections, ALT declining). Rising lactate strengthens this but is NOT required -- persistent grade 4 HE at Day 4+ with ANY other concerning feature (elevated lactate, bilirubin > 5, infection, elevated INR) is sufficient. ALFSG-PI treats grade 3 and 4 identically but grade 4 has much higher mortality risk.
+- AMMONIA CONTEXT: When persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L), the coma is likely NON-hepatic (sedation, uremia, ICU delirium). Do NOT apply the persistent HE death override -- assess reversibility instead.
 - CVVH CREATININE: Low creatinine during active CVVH is NOT evidence of renal recovery (CRRT clears creatinine).
 - NEAR-KCC PHENOTYPE WITHOUT TRAJECTORY (day 1-2): When only 1-2 days of data are available AND the patient presents with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL), this is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery trajectory, predict death when this severity pattern is present regardless of ALFSG-PI.
 
 Consider the weighted voting and provide comprehensive reasoning that synthesizes all perspectives. When agents disagree, check for override conditions FIRST:
 - Extreme bilirubin >15 mg/dL: predict death UNLESS full concordant recovery across ALL other systems (HE 0-1, INR < 1.5, lactate < 2.0, no vasopressors, no ventilation, no infection).
 - Persistent grade 4 HE at Day 4+ in APAP (or Day 5+ in non-APAP): predict death UNLESS liver function fully normalized (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections).
+- AMMONIA CONTEXT: If grade 3-4 HE has normal ammonia (<50 umol/L), the HE override does NOT apply.
 - Near-KCC phenotype without trajectory: predict death.
 If an override condition is met (accounting for the context-dependent exceptions above), predict death regardless of the majority vote. If concordant multi-system recovery is present WITHOUT override conditions, favor survival."""
 
