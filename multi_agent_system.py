@@ -744,6 +744,8 @@ Your reasoning should be grounded in the following peer-reviewed evidence:
    - Low creatinine during active CVVH is NOT evidence of renal recovery -- CRRT clears creatinine.
    - **EARLY PRESENTATION WITHOUT TRAJECTORY (day 1-2):** When only 1-2 days of data are available, concordant recovery CANNOT be demonstrated because there is no trajectory. Do NOT assume recovery will occur based on ALFSG-PI alone. A high-severity day-1 presentation with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL) is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery, predict death when this severity pattern is present.
    Be especially wary when ALFSG-PI improves at a single time point due to vasopressor cessation and HE improvement, but the overall trajectory shows discordance.
+   - **DEMONSTRATED RECOVERY OVERRIDES INITIAL PROGNOSIS (Day 5+):** When a patient at Day 5+ shows clear hepatic recovery trajectory -- INR normalized to <1.5, ALT declined >80% from peak, AND bilirubin declining -- the liver IS regenerating regardless of etiology or initial ALFSG-PI. Downweight the initial prognostic assessment. A patient with indeterminate etiology showing clear recovery by day 7 has already demonstrated they are in the survivor group regardless of population-level statistics.
+   - **STALE LAB VALUE CAUTION:** Lab values from earlier days (indicated by "from day X") more than 2 days old should be interpreted with caution, particularly lactate and ammonia. A stale elevated value from early presentation should NOT override current improving trends.
 
 # Chain-of-Thought Reasoning Process
 Follow this systematic approach:
@@ -790,6 +792,7 @@ Follow this systematic approach:
 **Step 8: Make Final Prediction**
 - Based on surgical assessment, recovery concordance, and overall clinical picture, predict likelihood of spontaneous survival
 - Concordant APAP recovery (INR normalizing + HE resolving + lactate normal) overrides low/intermediate ALFSG-PI -- predict survival
+- DEMONSTRATED RECOVERY (Day 5+): If INR < 1.5, ALT >80% down from peak, bilirubin declining -- the liver is regenerating. Downweight initial ALFSG-PI and etiology prognosis. Consider that >30% of "too sick" patients survive (Dong 2024), especially when liver recovery is clear.
 - Discordant patterns (extreme bilirubin + partial improvement + prolonged support) override favorable ALFSG-PI snapshot -- predict death
 - When severe extrahepatic organ failure is present, trust the clinical trajectory over any single prognostic score
 
