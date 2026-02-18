@@ -964,12 +964,18 @@ The strongest predictor of ALF outcome is whether organ system improvement is CO
 - AMMONIA CONTEXT: When persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L), the coma is likely NON-hepatic (sedation, uremia, ICU delirium). Do NOT apply the persistent HE death override -- assess reversibility instead.
 - CVVH CREATININE: Low creatinine during active CVVH is NOT evidence of renal recovery (CRRT clears creatinine).
 - NEAR-KCC PHENOTYPE WITHOUT TRAJECTORY (day 1-2): When only 1-2 days of data are available AND the patient presents with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL), this is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery trajectory, predict death when this severity pattern is present regardless of ALFSG-PI.
+- DEMONSTRATED RECOVERY OVERRIDES INITIAL PROGNOSIS (Day 5+): When a patient at Day 5+ shows clear hepatic recovery (INR < 1.5, ALT >80% down from peak, bilirubin declining), the liver IS regenerating. Downweight the initial ALFSG-PI and etiology prognosis in favor of the demonstrated trajectory. This applies to ALL etiologies.
+- STALE LAB VALUE CAUTION: Lab values from earlier days (>2 days old) should be interpreted with caution, especially lactate and ammonia. Do NOT let stale values override current improving trends.
+- HEPATOLOGIST AUTHORITY ON LIVER RECOVERY: When the Hepatologist identifies clear concordant liver recovery (INR normalized, ALT declining, bilirubin improving) AND predicts survival, but CC and/or TS predict death based on extrahepatic organ failure -- carefully evaluate whether the liver recovery is genuine. If the liver has demonstrably recovered, the question shifts to: "can modern ICU care manage the remaining organ failures?" In ALF with fully normalized liver, remaining organ failures are often reversible with ICU support. Give additional weight to the Hepatologist's liver-specific trajectory assessment when recovery is clear.
 
 Consider the weighted voting and provide comprehensive reasoning that synthesizes all perspectives. When agents disagree, check for override conditions FIRST:
 - Extreme bilirubin >15 mg/dL: predict death UNLESS full concordant recovery across ALL other systems (HE 0-1, INR < 1.5, lactate < 2.0, no vasopressors, no ventilation, no infection).
 - Persistent grade 4 HE at Day 4+ in APAP (or Day 5+ in non-APAP): predict death UNLESS liver function fully normalized (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections).
 - AMMONIA CONTEXT: If grade 3-4 HE has normal ammonia (<50 umol/L), the HE override does NOT apply.
 - Near-KCC phenotype without trajectory: predict death.
+- Demonstrated recovery (Day 5+) with INR < 1.5, ALT >80% down, bilirubin declining: favor survival regardless of initial ALFSG-PI or etiology.
+- Ammonia context: if grade 3-4 HE has normal ammonia (<50), the HE override does NOT apply.
+- If Hepatologist identifies clear liver recovery and predicts survival, give additional weight to their liver-specific assessment.
 If an override condition is met (accounting for the context-dependent exceptions above), predict death regardless of the majority vote. If concordant multi-system recovery is present WITHOUT override conditions, favor survival."""
 
     prompt = f"""{system_prompt}
