@@ -1056,10 +1056,11 @@ Provide your final synthesis and prediction."""
                 reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. No JSON found in response."
             )
         
-        # Override with calculated values
-        prediction.prediction = weighted_decision
-        prediction.confidence = confidence
-        
+        # The Committee Chair's LLM output is the final prediction.
+        # Do NOT override with weighted_decision -- the Committee Chair
+        # is designed to override the weighted vote when clinical criteria
+        # (demonstrated recovery, death overrides) warrant it.
+
         state['final_prediction'] = prediction
         logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
         
