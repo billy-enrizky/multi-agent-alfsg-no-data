@@ -219,3 +219,6 @@ test_opus.py
 # Node.js
 node_modules
 *.pptx
+.claude
+presentation
+docs
