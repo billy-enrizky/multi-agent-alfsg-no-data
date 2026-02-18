@@ -400,8 +400,8 @@ Follow this systematic approach:
 **Step 9: Synthesize and Make Final Prediction**
 - Integrate ALFSG-PI score, recovery concordance assessment, override conditions, and extrahepatic organ failure findings
 - CONCORDANT multi-system recovery (without override conditions) overrides a low/intermediate ALFSG-PI -- predict survival
-- DEMONSTRATED RECOVERY (Day 5+): If INR < 1.5, ALT declined >80% from peak, AND bilirubin declining, the liver IS regenerating. Downweight initial ALFSG-PI and etiology prognosis in favor of the demonstrated trajectory. Check for stale lab values that may not reflect current status.
-- Any override condition present (extreme bilirubin, persistent grade 4 HE + rising lactate) overrides a favorable ALFSG-PI -- predict death
+- DEMONSTRATED RECOVERY (Day 5+, DECISIVE): If INR < 1.5, ALT declined >80% from peak, AND bilirubin declining, the liver IS regenerating. As a HEPATOLOGIST, liver recovery is YOUR domain of expertise. When the liver has demonstrably recovered, predict SURVIVAL with high confidence. Extrahepatic organ failure (renal, respiratory, hemodynamic) with a recovered liver is an ICU management problem -- do NOT let it override your assessment that the liver has recovered. Note extrahepatic concerns for the committee, but your prediction should reflect the liver's demonstrated recovery. The initial ALFSG-PI and etiology prognosis are OBSOLETE once recovery is demonstrated.
+- Any override condition present (extreme bilirubin, persistent grade 4 HE at Day 4+ with PaO2/FiO2 < 2.0) overrides a favorable ALFSG-PI -- predict death
 - Assign confidence based on strength of concordance/discordance and consistency across markers
 
 # Output Format
@@ -973,10 +973,10 @@ Consider the weighted voting and provide comprehensive reasoning that synthesize
 - Persistent grade 4 HE at Day 4+ in APAP (or Day 5+ in non-APAP): predict death UNLESS liver function fully normalized (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections) AND PaO2/FiO2 >= 2.0 (no severe ARDS). Grade 4 HE + PaO2/FiO2 < 2.0 = predict death even if liver normalized.
 - AMMONIA CONTEXT (Day 5+ ONLY): At Day 5+, if grade 3-4 HE has normal ammonia (<50 umol/L) AND an alternative explanation exists, the HE override does NOT apply. Stale normal ammonia with recovered liver = confirmed normal ammonia. Before Day 5, normal ammonia does NOT rule out cerebral edema.
 - Near-KCC phenotype without trajectory: predict death.
-- Demonstrated recovery (Day 5+, NEAR-CONCLUSIVE) with INR < 1.5, ALT >80% down, bilirubin declining: predict SURVIVAL unless active deterioration. This OVERRIDES initial ALFSG-PI and etiology prognosis.
-- Ammonia context: if grade 3-4 HE has normal ammonia (<50), the HE override does NOT apply.
-- If Hepatologist identifies clear liver recovery and predicts survival, give additional weight to their liver-specific assessment.
-If an override condition is met (accounting for the context-dependent exceptions above), predict death regardless of the majority vote. If concordant multi-system recovery is present WITHOUT override conditions, favor survival."""
+- Demonstrated recovery (Day 5+, NEAR-CONCLUSIVE) with INR < 1.5, ALT >80% down, bilirubin declining: predict SURVIVAL unless active deterioration (rising lactate, worsening creatinine, new infections). This OVERRIDES initial ALFSG-PI and etiology prognosis -- the trajectory is the strongest predictor.
+- Ammonia context (Day 5+ ONLY): if grade 3-4 HE has normal ammonia (<50) AND an alternative explanation, the HE override does NOT apply. Stale normal ammonia with recovered liver = confirmed normal.
+- HEPATOLOGIST AUTHORITY (DECISIVE): When the Hepatologist identifies clear demonstrated liver recovery (INR < 1.5, ALT >80% down, bilirubin declining) AND predicts survival, this is the SINGLE MOST RELIABLE signal for your synthesis because the liver specialist is evaluating recovery in their domain of expertise. If demonstrated recovery criteria are met per the Hepatologist's assessment, predict SURVIVAL regardless of the majority vote, UNLESS there is evidence of active clinical deterioration (rising lactate, worsening creatinine, hemodynamic collapse, new infections). The remaining organ failures with a recovered liver are ICU-manageable.
+If an override condition is met (accounting for the context-dependent exceptions above), predict death regardless of the majority vote. If demonstrated recovery criteria are met without override conditions, predict survival regardless of the majority vote."""
 
     prompt = f"""{system_prompt}
 
