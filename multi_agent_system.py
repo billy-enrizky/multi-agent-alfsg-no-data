@@ -396,12 +396,12 @@ Follow this systematic approach:
 - DISCORDANT PATTERN (bilirubin escalating to extreme levels >15 mg/dL while other markers only partially improve, prolonged deep coma history, continuous CVVH, infections): This indicates failed hepatic regeneration despite supportive care. Even if ALFSG-PI snapshot looks favorable, discordant patterns predict death.
 
 **Step 8: Check for Override Conditions (EVALUATE IN PRIORITY ORDER)**
-- **PRIORITY 0 -- EARLY CRITICAL METABOLIC WARNING (Day 1-3, CHECK FIRST):** At Day 1-3, if ammonia >150 umol/L AND/OR lactate >4 mmol/L not declining AND/OR bilirubin actively rising, do NOT predict survival from partial INR/creatinine improvement alone. Partial improvement at Day 3 does NOT establish recovery -- the full metabolic picture must be improving. If critical metabolic derangements persist alongside partial improvement, predict death.
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+):** If INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or already near-normal <3 mg/dL), the liver IS regenerating. Predict SURVIVAL unless ACTIVE DETERIORATION. Active deterioration means SPECIFICALLY: rising lactate trend in recent days AND/OR new documented infections AND/OR hemodynamic collapse (escalating vasopressors WITH rising lactate). IMPORTANT: Isolated creatinine worsening (without rising lactate, without hemodynamic collapse, without new infections) is NOT sufficient active deterioration -- in APAP, AKI often worsens via ATN lag even as the liver recovers. Severe-but-stable or improving organ failure is NOT active deterioration. If demonstrated recovery is met without active deterioration, predict survival and SKIP all death overrides below. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 still predicts death.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** If INR improved >60% from peak AND peak was >5.0, combined with ALT >80% down from peak AND at least one of: lactate normalized (<2 mmol/L), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating even though INR has not yet reached <1.5. Predict SURVIVAL unless ACTIVE DETERIORATION (multi-organ worsening: rising lactate AND worsening creatinine AND new infections).
-- **PRIORITY 1C -- HEPATIC RECOVERY WITH MODERATE INITIAL COAGULOPATHY (Day 5+):** When peak INR was 2.0-5.0 (moderate, not extreme) AND ALT has declined >80% from peak AND lactate has normalized (<2 mmol/L) or HE has resolved to grade 0-1 AND bilirubin is declining from peak -- the liver IS regenerating. The moderate initial INR means it will not reach the extreme levels that trigger the >60% improvement criterion, but the combination of ALT clearance + metabolic normalization confirms hepatic recovery. Predict SURVIVAL unless multi-organ active deterioration.
-- **PRIORITY 1D -- UREMIC ENCEPHALOPATHY GATING CHECK (CHECK BEFORE ANY HE OVERRIDE):** When grade 3-4 HE persists AND ammonia is normal (<50 umol/L) AND creatinine >5 mg/dL (severe uremia), the encephalopathy is almost certainly UREMIC, not hepatic. Uremic encephalopathy: (a) does NOT carry cerebral edema/herniation risk, (b) is REVERSIBLE with dialysis/CRRT, (c) should NOT trigger the persistent grade 4 HE death override. This applies even when liver recovery criteria (INR <1.5, bilirubin <5) are NOT fully met -- the gating question is the CAUSE of the HE (hepatic vs uremic), not the severity of liver disease. If HE is uremic, SKIP the persistent HE death override entirely and assess the patient on liver trajectory and other organ systems alone.
-- **PRIORITY 2 -- Only if demonstrated/partial recovery criteria are NOT met AND HE is not uremic, check these death overrides:**
+- **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before evaluating ANY override, check: Is grade 3-4 HE present AND ammonia normal (<50 umol/L) AND creatinine >5 mg/dL? If ALL THREE are true, the encephalopathy is UREMIC, not hepatic. This determination is BINDING and FINAL -- you MUST NOT add extra conditions (CRRT status, ventilation status, neurologic improvement, hepatic normalization are ALL IRRELEVANT to this determination). The physiology is clear: hepatic encephalopathy REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. Uremic encephalopathy does NOT carry cerebral edema/herniation risk and is REVERSIBLE with renal replacement. If HE is uremic, the persistent grade 4 HE death override is NULLIFIED for this patient. Proceed to assess liver trajectory and other organs without the HE penalty. Record: "HE determined to be uremic (ammonia [value], creatinine [value]) -- HE death override nullified."
+- **MANDATORY PRE-CHECK B -- EARLY CRITICAL METABOLIC WARNING (Day 1-3):** At Day 1-3, if ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin actively rising, do NOT predict survival from partial improvement. Predict death.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+):** If INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or near-normal <3 mg/dL), the liver IS regenerating. Predict SURVIVAL unless ACTIVE DETERIORATION (rising lactate AND/OR new infections AND/OR hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration (ATN lag). If demonstrated recovery met without active deterioration, predict survival and SKIP death overrides. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 AND HE is NOT uremic.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** If INR improved >60% from peak >5.0, combined with ALT >80% down AND at least one of: lactate <2, HE grade 0-1, or creatinine improving -- liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration.
+- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check these EXACT criteria: (a) peak INR was 2.0-5.0, (b) ALT declined >80% from peak, (c) lactate normalized <2 mmol/L OR HE resolved to grade 0-1, (d) bilirubin is lower than the patient's own peak value (declining from THEIR peak, regardless of absolute level). If ALL four criteria are met, the liver IS regenerating despite moderate initial coagulopathy. Predict SURVIVAL unless multi-organ active deterioration. Note: bilirubin 14.2 declining from a peak of 19.5 DOES satisfy "declining from peak" even though the absolute value is still elevated -- the trend matters, not the level.
+- **PRIORITY 2 -- Only if NO recovery criteria met AND HE is not uremic (per Pre-Check A):**
 - EXTREME BILIRUBIN (context-dependent): If bilirubin >15 mg/dL in APAP, predict death UNLESS full concordant recovery across ALL other systems.
 - PERSISTENT GRADE 4 HE (duration-based): If grade 4 HE persists at Day 4+ AND HE is NOT uremic (see Priority 1D), predict death UNLESS ALL exception conditions met (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections, ALT declining, PaO2/FiO2 >= 2.0). Exception conditions are EXHAUSTIVE -- vasopressors/ventilation/AKI/WBC are NOT disqualifying. Grade 3 HE does NOT trigger this override.
 - AMMONIA CONTEXT (Day 5+ ONLY): If grade 3-4 HE + NORMAL ammonia (<50) + alternative explanation (uremia, sedation) at Day 5+, HE override does NOT apply. Stale normal ammonia + recovered liver (INR < 1.5) = CONFIRMED normal (physiological certainty).
@@ -409,14 +409,12 @@ Follow this systematic approach:
 - APAP LACTATE CONTEXT: In APAP ALF, extreme lactate (even >15-20 mmol/L) with hemodynamic stability (no vasopressors or stable, pH improving/near-normal) represents Type B lactic acidosis from mitochondrial dysfunction. Key distinguishing feature: OSCILLATING lactate (going up AND down) without hemodynamic deterioration = mitochondrial origin. Steadily RISING lactate with vasopressor escalation = true tissue hypoperfusion. Do NOT predict death from mitochondrial lactate.
 
 **Step 9: Synthesize and Make Final Prediction**
-- Integrate ALFSG-PI score, recovery concordance assessment, override conditions, and extrahepatic organ failure findings
-- CONCORDANT multi-system recovery (without override conditions) overrides a low/intermediate ALFSG-PI -- predict survival
-- DEMONSTRATED RECOVERY (Day 5+, BINDING): If liver recovery criteria are met (full, partial, or moderate-INR recovery), the liver IS regenerating. As a HEPATOLOGIST, liver recovery is YOUR domain of expertise. Your decision MUST be "Yes" when any recovery criteria are met UNLESS you can cite SPECIFIC MULTI-ORGAN WORSENING TRENDS (not just severity, not isolated creatinine, not mitochondrial lactate). Extrahepatic organ failure with a recovered liver is an ICU management problem.
-- UREMIC ENCEPHALOPATHY: If grade 3-4 HE + normal ammonia + creatinine >5, the HE is uremic and does NOT trigger the death override.
-- Grade 3 HE is NOT grade 4 -- it does NOT trigger the persistent grade 4 HE death override.
-- EARLY WARNING (Day 1-3): If critical metabolic derangements persist (ammonia >150, lactate >4 not declining, rising bilirubin) despite partial improvement, predict death.
-- Any non-uremic death override present WITHOUT demonstrated recovery overrides a favorable ALFSG-PI -- predict death
-- Assign confidence based on strength of concordance/discordance and consistency across markers
+- FIRST: Check Pre-Check A result. If HE was determined to be uremic, the HE death override is NULLIFIED. Do NOT let grade 4 HE drive a death prediction when the coma is uremic.
+- If ANY recovery criteria are met (Priority 1, 1B, or 1C) AND no multi-organ active deterioration: your decision MUST be "Yes." As a HEPATOLOGIST, liver recovery is YOUR domain of expertise. When the liver is regenerating (ALT >80% down, lactate normalized), persistent extrahepatic issues (creatinine, ventilation, even grade 4 uremic HE) are ICU management problems, not hepatology problems.
+- COMBINATION SIGNAL: When BOTH moderate-INR recovery (Priority 1C) AND uremic HE (Pre-Check A) are present, this is a STRONG survival signal -- the liver injury is resolving AND the coma is non-hepatic/reversible.
+- Grade 3 HE is NOT grade 4 -- does NOT trigger the persistent grade 4 HE death override.
+- EARLY WARNING (Day 1-3): Critical metabolic derangements despite partial improvement = predict death.
+- Only apply death overrides when: (a) no recovery criteria are met, AND (b) HE is not uremic, AND (c) the override condition is genuinely present.
 
 # Output Format
 You must strictly adhere to this JSON format:
@@ -607,28 +605,26 @@ Follow this systematic approach:
 - Review WBC trends and infection documentation
 - Determine if sepsis is complicating the clinical course
 
-**Step 8: Assess Recovery Concordance, Override Conditions, and Multi-Organ Trajectory (EVALUATE IN PRIORITY ORDER)**
-- **PRIORITY 0 -- EARLY CRITICAL METABOLIC WARNING (Day 1-3):** At Day 1-3, if ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising, do NOT predict survival from partial INR/creatinine improvement alone. Critical metabolic derangements persisting at Day 3 = predict death.
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+, CHECK FIRST):** If INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or near-normal <3 mg/dL), the liver IS regenerating. As a CRITICAL CARE physician, assess whether remaining organ failures are REVERSIBLE with continued ICU support. Predict SURVIVAL unless ACTIVE DETERIORATION: rising lactate trend, new documented infections, or hemodynamic collapse (escalating vasopressors WITH rising lactate). IMPORTANT: Isolated creatinine worsening (without rising lactate, without hemodynamic collapse, without new infections) is NOT sufficient active deterioration -- ATN lag is common in APAP. Severe-but-stable or improving organ failure is NOT active deterioration. If demonstrated recovery is met without active deterioration, predict survival and SKIP death overrides. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 still predicts death.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** If INR improved >60% from peak AND peak was >5.0, combined with ALT >80% down AND at least one of: lactate normalized (<2), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration.
-- **PRIORITY 1C -- HEPATIC RECOVERY WITH MODERATE INITIAL COAGULOPATHY (Day 5+):** When peak INR was 2.0-5.0 AND ALT declined >80% from peak AND lactate normalized (<2) or HE resolved to grade 0-1 AND bilirubin declining from peak -- the liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration.
-- **PRIORITY 1D -- UREMIC ENCEPHALOPATHY GATING CHECK (CHECK BEFORE ANY HE OVERRIDE):** When grade 3-4 HE persists AND ammonia is normal (<50 umol/L) AND creatinine >5 mg/dL, the encephalopathy is almost certainly UREMIC, not hepatic. Uremic encephalopathy does NOT carry cerebral edema risk and is REVERSIBLE with dialysis/CRRT. The persistent grade 4 HE death override does NOT apply to uremic encephalopathy. SKIP the HE override entirely and assess liver trajectory and other organ systems independently. This applies even when liver recovery criteria (INR <1.5) are not fully met.
-- **PRIORITY 2 -- Only if demonstrated/partial recovery NOT met AND HE is not uremic:**
-- Assess CONCORDANCE: Are all organ systems improving together? CONCORDANT improvement with normal lactate = strong survival signal.
-  (a) Bilirubin >15 mg/dL in APAP = predict death UNLESS full concordant recovery across ALL other systems.
-  (b) Persistent grade 4 HE at Day 4+ AND HE is NOT uremic (see 1D) = predict death UNLESS ALL exception conditions met (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections, ALT declining, PaO2/FiO2 >= 2.0). Exception conditions are EXHAUSTIVE. Grade 3 HE does NOT trigger this override.
-  (c) Low creatinine during active CVVH is NOT evidence of recovery.
-  (d) APAP LACTATE CONTEXT: In APAP, extreme lactate (even >15-20 mmol/L) with hemodynamic stability = Type B lactic acidosis (mitochondrial). OSCILLATING lactate (up AND down) without hemodynamic deterioration = mitochondrial origin. Steadily RISING lactate with vasopressor escalation = true hypoperfusion. Do NOT predict death from mitochondrial lactate.
-- DISCORDANT pattern WITHOUT demonstrated recovery AND without uremic HE = failed regeneration, predict death
+**Step 8: Assess Recovery Concordance, Override Conditions, and Multi-Organ Trajectory**
+- **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before evaluating ANY override, check: Is grade 3-4 HE present AND ammonia normal (<50) AND creatinine >5 mg/dL? If ALL THREE true, HE is UREMIC, not hepatic. This is BINDING -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are ALL IRRELEVANT). Hepatic HE REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. Uremic coma does NOT carry cerebral edema risk and is REVERSIBLE with renal replacement. The persistent HE death override is NULLIFIED. Record: "HE is uremic -- HE override nullified."
+- **MANDATORY PRE-CHECK B -- EARLY CRITICAL METABOLIC WARNING (Day 1-3):** At Day 1-3, if ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict death.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+):** If INR < 1.5, ALT >80% down, bilirubin declining (or <3 mg/dL), predict SURVIVAL unless active deterioration (rising lactate, new infections, hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration. ONE EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 2.0.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE grade 0-1 or creatinine improving = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration.
+- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check: (a) peak INR 2.0-5.0, (b) ALT >80% down from peak, (c) lactate <2 OR HE grade 0-1, (d) bilirubin lower than patient's OWN peak (declining from THEIR peak -- bilirubin 14.2 from peak 19.5 satisfies this). If ALL four met = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration.
+- **COMBINATION SIGNAL:** When BOTH moderate-INR recovery (1C) AND uremic HE (Pre-Check A) apply, this is a STRONG survival signal: the liver is recovering AND the coma is non-hepatic/reversible.
+- **PRIORITY 2 -- Only if NO recovery criteria met AND HE is NOT uremic:**
+  (a) Bilirubin >15 in APAP + discordance = death.
+  (b) Persistent non-uremic grade 4 HE at Day 4+ without full exception conditions = death.
+  (c) APAP LACTATE: OSCILLATING extreme lactate with hemodynamic stability = mitochondrial, not circulatory.
+  (d) CVVH creatinine artifact.
+- DISCORDANT pattern WITHOUT recovery AND without uremic HE = failed regeneration = death.
 
 **Step 9: Make Final Prediction**
-- Based on systematic multi-organ assessment and recovery concordance, predict survival likelihood
-- CONCORDANT multi-organ recovery overrides low/intermediate ALFSG-PI -- predict survival
-- DEMONSTRATED RECOVERY (Day 5+, BINDING): If any liver recovery criteria are met (full, partial, or moderate-INR), remaining multi-organ failure is an ICU management question. Your decision MUST be "Yes" unless you can cite SPECIFIC MULTI-ORGAN WORSENING TRENDS (not isolated creatinine, not mitochondrial lactate). Check for stale lab values and APAP lactate context.
-- UREMIC ENCEPHALOPATHY: Grade 3-4 HE + normal ammonia + creatinine >5 = uremic, NOT hepatic. Does NOT trigger death override.
-- Grade 3 HE does NOT trigger the persistent grade 4 HE death override.
+- FIRST: Apply Pre-Check A result. If HE is uremic, the HE death override is NULLIFIED. Do NOT let uremic grade 4 HE drive a death prediction.
+- If ANY recovery criteria met (Priority 1/1B/1C) AND no multi-organ active deterioration: decision MUST be "Yes." Remaining organ failures are ICU-manageable when the liver is recovering.
+- COMBINATION: moderate-INR recovery + uremic HE = STRONG survival signal. Predict Yes.
 - EARLY WARNING (Day 1-3): Critical metabolic derangements despite partial improvement = predict death.
-- DISCORDANT patterns WITHOUT recovery AND without uremic HE override favorable ALFSG-PI -- predict death
+- Only apply death overrides when: no recovery criteria met AND HE is not uremic.
 
 # Output Format
 You must strictly adhere to this JSON format:
@@ -816,18 +812,18 @@ Follow this systematic approach:
 - If concordant recovery in APAP: bilirubin rise is expected (lagging indicator in hyperacute ALF), vasopressors with normal lactate are less concerning
 - If discordant (extreme bilirubin rise >15 mg/dL + only partial INR improvement + prolonged organ support + history of deep coma): predict poor outcome despite favorable ALFSG-PI snapshot
 
-**Step 8: Make Final Prediction (EVALUATE IN PRIORITY ORDER)**
-- **PRIORITY 0 -- EARLY CRITICAL METABOLIC WARNING (Day 1-3):** At Day 1-3, if ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising, do NOT predict survival from partial improvement alone. Critical metabolic derangements at Day 3 = predict death.
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+, CHECK FIRST):** If INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or near-normal <3 mg/dL), the liver IS regenerating. Predict SURVIVAL unless ACTIVE DETERIORATION: rising lactate trend, new documented infections, or hemodynamic collapse. IMPORTANT: Isolated creatinine worsening is NOT sufficient active deterioration -- ATN lag is common in APAP. >30% of "too sick" patients survive (Dong 2024). ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 still predicts death.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** If INR improved >60% from peak AND peak was >5.0, combined with ALT >80% down AND at least one of: lactate normalized, HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration.
-- **PRIORITY 1C -- HEPATIC RECOVERY WITH MODERATE INITIAL COAGULOPATHY (Day 5+):** When peak INR was 2.0-5.0 AND ALT declined >80% from peak AND lactate normalized (<2) or HE resolved to grade 0-1 AND bilirubin declining from peak -- the liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration.
-- **PRIORITY 1D -- UREMIC ENCEPHALOPATHY GATING CHECK (BEFORE HE OVERRIDE):** Grade 3-4 HE + normal ammonia (<50) + creatinine >5 mg/dL = UREMIC encephalopathy, not hepatic. Does NOT carry cerebral edema risk. REVERSIBLE with dialysis/CRRT. SKIP the persistent HE death override and assess liver trajectory independently. >30% of "too sick" patients survive (Dong 2024).
-- **PRIORITY 2 -- Only if recovery NOT met AND HE is not uremic:**
-- Concordant recovery overrides low/intermediate ALFSG-PI -- predict survival
-- Persistent grade 4 HE at Day 4+ AND NOT uremic = predict death UNLESS ALL exception conditions met.
-- APAP LACTATE: Extreme OSCILLATING lactate with hemodynamic stability in APAP = mitochondrial (Type B). Do NOT predict death from mitochondrial lactate.
-- Discordant patterns without recovery and without uremic HE override favorable ALFSG-PI -- predict death
-- BINDING: When any recovery criteria are met at Day 5+, your decision MUST be "Yes" unless you identify SPECIFIC MULTI-ORGAN WORSENING TRENDS (not isolated creatinine, not mitochondrial lactate).
+**Step 8: Make Final Prediction**
+- **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before any override, check: grade 3-4 HE AND ammonia <50 AND creatinine >5? If ALL THREE true, HE is UREMIC, not hepatic. This is BINDING -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are IRRELEVANT). Normal ammonia + severe uremia = uremic coma (does NOT carry cerebral edema risk, REVERSIBLE with dialysis). HE death override NULLIFIED. Record: "HE is uremic -- HE override nullified."
+- **MANDATORY PRE-CHECK B -- EARLY METABOLIC WARNING (Day 1-3):** Ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict death.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+):** INR < 1.5 + ALT >80% down + bilirubin declining (or <3) = liver regenerating. Predict SURVIVAL unless active deterioration. Isolated creatinine worsening NOT sufficient. >30% of "too sick" survive (Dong 2024). EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 2.0.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):** INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating.
+- **PRIORITY 1C -- MODERATE-INR RECOVERY (Day 5+, BINDING):** Peak INR 2.0-5.0 + ALT >80% down + lactate <2 OR HE 0-1 + bilirubin declining from patient's OWN peak (any decline, regardless of absolute level) = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration.
+- **COMBINATION:** Moderate-INR recovery + uremic HE = STRONG survival signal. Liver recovering AND coma reversible.
+- **PRIORITY 2 -- Only if NO recovery met AND HE NOT uremic:**
+- Non-uremic persistent grade 4 HE at Day 4+ without exception conditions = death.
+- APAP LACTATE: OSCILLATING extreme lactate with hemodynamic stability = mitochondrial.
+- Discordant WITHOUT recovery AND without uremic HE = death.
+- BINDING: When any recovery criteria met at Day 5+, decision MUST be "Yes" unless SPECIFIC MULTI-ORGAN worsening (not isolated creatinine, not mitochondrial lactate).
 
 # Output Format
 You must strictly adhere to this JSON format:
@@ -993,37 +989,38 @@ The strongest predictor of ALF outcome is whether organ system improvement is CO
 
 **OVERRIDE CONDITIONS (EVALUATE IN PRIORITY ORDER):**
 
-**PRIORITY 0 -- EARLY CRITICAL METABOLIC WARNING (Day 1-3):**
-At Day 1-3, if specialist reasoning reveals ammonia >150 umol/L AND/OR lactate >4 mmol/L not declining AND/OR bilirubin actively rising despite partial INR/creatinine improvement, the full metabolic picture is NOT improving. Do NOT predict survival. Partial improvement at Day 3 does NOT establish recovery.
+**MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):**
+Before evaluating ANY override, extract from specialist reasoning: Is grade 3-4 HE present AND ammonia normal (<50) AND creatinine >5 mg/dL? If ALL THREE true, the HE is UREMIC, not hepatic. This is BINDING and FINAL -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are ALL IRRELEVANT). Hepatic HE REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. The persistent HE death override is NULLIFIED for this patient. Record: "HE is uremic -- HE override nullified."
 
-**PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+, CHECK FIRST):**
-When the specialist reasoning reveals that INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or already near-normal <3 mg/dL), the liver IS regenerating. Predict SURVIVAL unless ACTIVE DETERIORATION. Active deterioration means SPECIFICALLY: rising lactate trend, new documented infections, or hemodynamic collapse (escalating vasopressors WITH rising lactate). IMPORTANT: Isolated creatinine worsening is NOT sufficient active deterioration -- in APAP, AKI often worsens via ATN lag even as the liver recovers. Severe-but-stable or improving organ failure is NOT active deterioration. If demonstrated recovery is met without active deterioration, predict SURVIVAL regardless of the weighted vote. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 still predicts death.
-INDEPENDENT ASSESSMENT (CRITICAL): Even if ALL specialists predict "No," review their reasoning for clinical data showing demonstrated or partial recovery criteria are met. A unanimous "No" vote does NOT override clinical reality when the liver has demonstrably recovered and no active deterioration exists.
+**MANDATORY PRE-CHECK B -- EARLY METABOLIC WARNING (Day 1-3):**
+At Day 1-3, ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising despite partial improvement = predict death.
+
+**PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+):**
+INR < 1.5 + ALT >80% down + bilirubin declining (or <3) = liver regenerating. Predict SURVIVAL unless active deterioration. Isolated creatinine worsening NOT sufficient. ONE EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 2.0.
+INDEPENDENT ASSESSMENT: Even if ALL specialists predict "No," review their clinical data for recovery criteria. A unanimous "No" does NOT override clinical reality.
 
 **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+):**
-When specialist reasoning reveals INR improved >60% from peak AND peak was >5.0, combined with ALT >80% down AND at least one of: lactate normalized (<2), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating. Predict SURVIVAL unless multi-organ active deterioration. >30% of "too sick" patients survive (Dong 2024).
+INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating. >30% "too sick" survive.
 
-**PRIORITY 1C -- HEPATIC RECOVERY WITH MODERATE INITIAL COAGULOPATHY (Day 5+):**
-When specialist reasoning reveals peak INR was 2.0-5.0 AND ALT declined >80% from peak AND lactate normalized (<2) or HE resolved to grade 0-1 AND bilirubin declining from peak -- the liver IS regenerating despite moderate INR. Predict SURVIVAL unless multi-organ active deterioration.
+**PRIORITY 1C -- MODERATE-INR RECOVERY (Day 5+, BINDING):**
+Peak INR 2.0-5.0 + ALT >80% down + lactate <2 OR HE 0-1 + bilirubin declining from patient's OWN peak (any decline, regardless of absolute level -- e.g., 19.5 to 14.2 satisfies "declining") = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration.
 
-**PRIORITY 1D -- UREMIC ENCEPHALOPATHY GATING CHECK (BEFORE ANY HE OVERRIDE):**
-When specialist reasoning reveals grade 3-4 HE + normal ammonia (<50 umol/L) + creatinine >5 mg/dL, the encephalopathy is UREMIC, not hepatic. Uremic encephalopathy: (a) does NOT carry cerebral edema/herniation risk, (b) is REVERSIBLE with dialysis/CRRT, (c) should NOT trigger the persistent HE death override. SKIP the HE death override entirely. Assess the patient on liver trajectory and other organ systems alone. This applies even when liver recovery criteria (INR <1.5) are not fully met.
+**COMBINATION SIGNAL:** When BOTH moderate-INR recovery (1C) AND uremic HE (Pre-Check A) apply, this is a STRONG survival signal: the liver is recovering AND the persistent coma is non-hepatic and reversible with dialysis. Predict SURVIVAL.
 
-**PRIORITY 2 -- Only if recovery NOT met AND HE is not uremic:**
-- EXTREME BILIRUBIN: Bilirubin >15 mg/dL in APAP = predict death UNLESS full concordant recovery across ALL other systems.
-- PERSISTENT GRADE 4 HE (NOT uremic): Grade 4 HE at Day 4+ AND NOT uremic (see 1D) = predict death UNLESS ALL exception conditions met. Grade 3 HE does NOT trigger this override.
-- CVVH CREATININE: Low creatinine during active CVVH is NOT evidence of recovery.
-- NEAR-KCC PHENOTYPE WITHOUT TRAJECTORY (day 1-2): predict death.
-- STALE LAB VALUES: Do NOT let stale values override current trends.
-- APAP LACTATE CONTEXT: In APAP, extreme OSCILLATING lactate (going up AND down) with hemodynamic stability (no vasopressors, pH improving) = Type B lactic acidosis from mitochondrial dysfunction. Steadily rising lactate with vasopressor escalation = true hypoperfusion. Do NOT predict death from mitochondrial lactate.
+**PRIORITY 2 -- Only if NO recovery criteria met AND HE NOT uremic:**
+- EXTREME BILIRUBIN + discordance = death.
+- Non-uremic persistent grade 4 HE without exception conditions = death.
+- NEAR-KCC WITHOUT TRAJECTORY (day 1-2) = death.
+- APAP LACTATE: OSCILLATING extreme lactate with hemodynamic stability = mitochondrial.
 
 **SYNTHESIS RULES (apply in order):**
-1. If ANY recovery criteria are met (demonstrated, partial, or moderate-INR) AND no multi-organ active deterioration: predict SURVIVAL regardless of weighted vote.
-2. If Hepatologist identifies liver recovery AND predicts survival: give DECISIVE weight to the liver specialist's domain expertise. Predict SURVIVAL unless multi-organ active deterioration. The Hepatologist is the specialist in liver regeneration -- when the Hepatologist says the liver is recovering and other agents disagree based on extrahepatic concerns (lactate, creatinine), the Hepatologist's liver assessment should prevail because remaining organ failures with a recovered liver are ICU-manageable.
-3. If grade 3-4 HE + normal ammonia (<50) + creatinine >5: encephalopathy is UREMIC (reversible with dialysis). The persistent HE death override does NOT apply. Assess liver trajectory independently.
-4. If a non-uremic death override condition is met WITHOUT recovery criteria: predict death regardless of weighted vote.
-5. Early warning (Day 1-3): If critical metabolic derangements persist despite partial improvement, predict death.
-6. Otherwise: follow the weighted vote."""
+1. If ANY recovery criteria met AND no multi-organ active deterioration: predict SURVIVAL regardless of weighted vote.
+2. If Hepatologist identifies liver recovery AND predicts survival: give DECISIVE weight. The Hepatologist is the liver regeneration specialist -- remaining organ failures with a recovered liver are ICU-manageable.
+3. If HE is uremic (Pre-Check A): the HE death override is NULLIFIED. Assess liver trajectory independently. If liver is recovering (any recovery criteria), predict SURVIVAL.
+4. COMBINATION: moderate-INR recovery + uremic HE = predict SURVIVAL.
+5. If non-uremic death override met WITHOUT recovery criteria: predict death.
+6. Early warning (Day 1-3): Critical metabolic derangements = predict death.
+7. Otherwise: follow the weighted vote."""
 
     prompt = f"""{system_prompt}
 
