@@ -426,31 +426,18 @@ def select_skills(phenotype_tags: list) -> str:
     return "\n# PHENOTYPE-SPECIFIC SKILLS (injected based on this patient's clinical profile)\n" + "\n".join(blocks)
 
 
-def format_binding_rules_skill(data: dict) -> str:
-    """Run deterministic binding rules and format the result as an injected skill block.
+def format_tiered_rules(data: dict) -> str:
+    """Format tiered deterministic rules for injection into LLM prompt.
 
-    Instead of silently overriding the LLM after the fact, this tells the LLM
-    what the deterministic rules computed so it can incorporate that into its reasoning.
+    Tier 1 (BINDING): P1 demonstrated recovery + death overrides (high specificity).
+    Tier 2 (SOFT): P1B, P1C, P1D, Combination Signal, Waiver (known FP edge cases).
     """
     override_pred, override_reason = evaluate_binding_rules(data)
     if override_pred is None:
         return ""
 
-    if override_pred == "Yes":
-        return f"""
-## BINDING RULE: Deterministic Criteria Engine Result
-The deterministic criteria engine has evaluated this patient's clinical values against validated recovery criteria.
-
-**RESULT: SURVIVAL CRITERIA MET**
-{override_reason}
-
-This is a BINDING rule computed from exact threshold checks on extracted clinical values.
-The criteria engine uses the same validated thresholds (P1/P1B/P1C/P1D/Combination Signal/Extreme Bilirubin Waiver) described in your instructions.
-You MUST predict **Yes** (survival) unless you can identify SPECIFIC active multi-organ deterioration
-(rising lactate AND worsening creatinine AND new infections -- all three required for negation).
-Isolated concerns (ventilation alone, creatinine alone, bilirubin rising alone) do NOT negate binding survival criteria.
-"""
-    else:
+    # Death overrides are always BINDING (Tier 1)
+    if override_pred == "No":
         return f"""
 ## BINDING RULE: Deterministic Criteria Engine Result
 The deterministic criteria engine has evaluated this patient's clinical values against validated death override criteria.
@@ -461,6 +448,39 @@ The deterministic criteria engine has evaluated this patient's clinical values a
 This is a BINDING rule computed from exact threshold checks on extracted clinical values.
 You MUST predict **No** (death/transplant) unless ALL exception conditions specified in the rule are met.
 Do NOT rationalize around this override with partial improvements or favorable ALFSG-PI scores.
+"""
+
+    # Survival: tier depends on which rule fired
+    is_p1 = 'P1:' in override_reason and 'P1B:' not in override_reason and 'P1C' not in override_reason and 'P1D' not in override_reason
+
+    if is_p1:
+        # Tier 1 BINDING: P1 demonstrated recovery (near 100% specific)
+        return f"""
+## BINDING RULE: Deterministic Criteria Engine Result
+The deterministic criteria engine has evaluated this patient's clinical values against Priority 1 (Demonstrated Recovery) criteria.
+
+**RESULT: PRIORITY 1 CRITERIA MET**
+{override_reason}
+
+Priority 1 (INR <=1.5 + ALT >80% down + bilirubin declining) is the MOST reliable survival indicator.
+This is a BINDING rule. You MUST predict **Yes** (survival) unless you can identify SPECIFIC active multi-organ deterioration
+(rising lactate AND worsening creatinine AND new infections -- all three required for negation).
+"""
+    else:
+        # Tier 2 SOFT: P1B, P1C, P1D, Combination Signal, Waiver
+        return f"""
+## CRITERIA ANALYSIS: Deterministic Criteria Engine Result
+The deterministic criteria engine has evaluated this patient's clinical values against recovery criteria.
+
+**RESULT: RECOVERY CRITERIA APPEAR MET**
+{override_reason}
+
+This analysis is based on exact threshold checks on extracted clinical values.
+These criteria **strongly suggest survival** -- in most cases, patients meeting these criteria survive.
+However, weigh this against the full clinical picture. If there is clear evidence of active multi-organ
+deterioration (e.g., rising lactate + worsening creatinine + new infections, or catastrophic extrahepatic failure),
+you may override this suggestion. Isolated concerns (ventilation alone, creatinine alone, rising bilirubin alone)
+should NOT override recovery criteria.
 """
 
 
@@ -1340,20 +1360,21 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    # Selective injection: only enhance hard-phenotype patients
     parsed = parse_vignette(vignette)
     phenotype_tags = classify_phenotype(parsed)
-    skills_text = select_skills(phenotype_tags)
-    criteria_text = format_criteria_evaluation(vignette)
-    binding_rules_text = format_binding_rules_skill(parsed)
 
     prompt_parts = [f"Clinical Vignette:\n{vignette}"]
-    if criteria_text:
-        prompt_parts.append(f"\n{criteria_text}")
-    if skills_text:
-        prompt_parts.append(f"\n{skills_text}")
-    if binding_rules_text:
-        prompt_parts.append(f"\n{binding_rules_text}")
+    if phenotype_tags:
+        skills_text = select_skills(phenotype_tags)
+        criteria_text = format_criteria_evaluation(vignette)
+        tiered_rules_text = format_tiered_rules(parsed)
+        if criteria_text:
+            prompt_parts.append(f"\n{criteria_text}")
+        if skills_text:
+            prompt_parts.append(f"\n{skills_text}")
+        if tiered_rules_text:
+            prompt_parts.append(f"\n{tiered_rules_text}")
     prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
     prompt = "\n".join(prompt_parts)
 
@@ -1572,20 +1593,21 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    # Selective injection: only enhance hard-phenotype patients
     parsed = parse_vignette(vignette)
     phenotype_tags = classify_phenotype(parsed)
-    skills_text = select_skills(phenotype_tags)
-    criteria_text = format_criteria_evaluation(vignette)
-    binding_rules_text = format_binding_rules_skill(parsed)
 
     prompt_parts = [f"Clinical Vignette:\n{vignette}"]
-    if criteria_text:
-        prompt_parts.append(f"\n{criteria_text}")
-    if skills_text:
-        prompt_parts.append(f"\n{skills_text}")
-    if binding_rules_text:
-        prompt_parts.append(f"\n{binding_rules_text}")
+    if phenotype_tags:
+        skills_text = select_skills(phenotype_tags)
+        criteria_text = format_criteria_evaluation(vignette)
+        tiered_rules_text = format_tiered_rules(parsed)
+        if criteria_text:
+            prompt_parts.append(f"\n{criteria_text}")
+        if skills_text:
+            prompt_parts.append(f"\n{skills_text}")
+        if tiered_rules_text:
+            prompt_parts.append(f"\n{tiered_rules_text}")
     prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
     prompt = "\n".join(prompt_parts)
 
@@ -1792,20 +1814,21 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    # Selective injection: only enhance hard-phenotype patients
     parsed = parse_vignette(vignette)
     phenotype_tags = classify_phenotype(parsed)
-    skills_text = select_skills(phenotype_tags)
-    criteria_text = format_criteria_evaluation(vignette)
-    binding_rules_text = format_binding_rules_skill(parsed)
 
     prompt_parts = [f"Clinical Vignette:\n{vignette}"]
-    if criteria_text:
-        prompt_parts.append(f"\n{criteria_text}")
-    if skills_text:
-        prompt_parts.append(f"\n{skills_text}")
-    if binding_rules_text:
-        prompt_parts.append(f"\n{binding_rules_text}")
+    if phenotype_tags:
+        skills_text = select_skills(phenotype_tags)
+        criteria_text = format_criteria_evaluation(vignette)
+        tiered_rules_text = format_tiered_rules(parsed)
+        if criteria_text:
+            prompt_parts.append(f"\n{criteria_text}")
+        if skills_text:
+            prompt_parts.append(f"\n{skills_text}")
+        if tiered_rules_text:
+            prompt_parts.append(f"\n{tiered_rules_text}")
     prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
     prompt = "\n".join(prompt_parts)
 
@@ -2048,13 +2071,20 @@ WORKED EXAMPLE 2 (NEAR-MISS RECOVERY DOES NOT SAVE): Day 7, APAP, peak INR 5.2, 
 7. **Day 1-3 EARLY ASSESSMENT RULE (BINDING):** At Day 1-3, no formal recovery criteria (Priority 1/1B/1C) are available. If Pre-Check C is triggered (mechanical ventilation), predict DEATH regardless of weighted vote. If Pre-Check B is triggered (and the Bilirubin Rising Exception does NOT apply), predict DEATH. DAY 1 FAVORABLE OVERRIDE: At Day 1 specifically, if Pre-Check B Day 1 exception is active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors) AND the Hepatologist predicts Yes AND ALFSG-PI >80% (relaxed from >85% when APAP AND no organ support -- no vent, no pressors, no CVVH): predict SURVIVAL regardless of CC/TS votes. Rationale: The Hepatologist is the liver specialist, and their favorable assessment at Day 1 with high ALFSG-PI and no organ support outweighs CC/TS concerns about ammonia when the Day 1 exception explicitly makes ammonia non-binding. CC and TS often vote No based on ammonia risk despite the exception -- this override corrects that bias. If neither Pre-Check B nor C is triggered AND no Day 1 favorable override applies AND no other binding override applies, follow the WEIGHTED VOTE. The ONLY exceptions at Day 1-3 that can override the weighted vote are: binding Pre-Check B death override, binding Pre-Check C death override, and the Day 1 favorable survival override above.
 8. Otherwise: follow the weighted vote. IMPORTANT: You may ONLY reach this step if NO binding rule above (Pre-Checks, Priorities, Rules 5B, 6) has been triggered. If you find yourself here while the patient has grade 4 HE and no formal recovery criteria -- STOP, you have skipped Rule 5B. Go back and check."""
 
-    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    # Selective injection: only enhance hard-phenotype patients
     vignette = state.get('vignette', '')
-    criteria_eval = format_criteria_evaluation(vignette)
     parsed = parse_vignette(vignette)
     phenotype_tags = classify_phenotype(parsed)
-    skills_text = select_skills(phenotype_tags)
-    binding_rules_text = format_binding_rules_skill(parsed)
+
+    # Gate injection behind phenotype tags
+    if phenotype_tags:
+        criteria_eval = format_criteria_evaluation(vignette)
+        skills_text = select_skills(phenotype_tags)
+        tiered_rules_text = format_tiered_rules(parsed)
+    else:
+        criteria_eval = ""
+        skills_text = ""
+        tiered_rules_text = ""
 
     if phenotype_tags:
         logger.info(f"Committee Chair: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
@@ -2082,9 +2112,9 @@ Weighted Analysis:
 
 {criteria_eval}
 {skills_text}
-{binding_rules_text}
+{tiered_rules_text}
 
-You MUST use the pre-computed values above (INR improvement %, ALT decline %, peak INR, etc.) in your criteria evaluation. Do NOT re-calculate these values -- use them as provided. If the criteria checklist shows a criterion as "ALL MET," you must acknowledge it in your reasoning and apply the corresponding binding rule.
+You MUST use the pre-computed values above (INR improvement %, ALT decline %, peak INR, etc.) in your criteria evaluation. Do NOT re-calculate these values -- use them as provided. If the criteria checklist shows a criterion as "ALL MET," you must acknowledge it in your reasoning and apply the corresponding rule.
 
 Provide your final synthesis and prediction."""
 
