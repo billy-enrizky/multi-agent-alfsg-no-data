@@ -47,6 +47,911 @@ class AgentState(TypedDict):
     critical_care_output: AgentDecision | None
     transplant_surgeon_output: AgentDecision | None
     final_prediction: FinalPrediction | None
+    llm_prediction: str
+    post_processed: bool
+    override_reason: str
+
+def parse_vignette(vignette: str) -> dict:
+    """Parse a clinical vignette into structured clinical values for deterministic rule evaluation.
+
+    Returns a dict with:
+        day, etiology, alfsg_pi, current_inr, peak_inr, inr_improvement_pct,
+        current_alt, peak_alt, alt_decline_pct, current_bilirubin, bilirubin_declining,
+        bilirubin_peak, current_creatinine, creatinine_trend, current_lactate,
+        lactate_stale, lactate_missing, lactate_rising, current_ammonia, ammonia_missing,
+        he_grade, has_infection, on_ventilation, on_vasopressors, on_cvvh,
+        pao2_fio2, is_apap
+    """
+    data = {}
+
+    # Day
+    m = re.search(r'Patient \d+ on Day (\d+)', vignette)
+    data['day'] = int(m.group(1)) if m else None
+
+    # Etiology
+    data['is_apap'] = 'Acetaminophen' in vignette.split('\n')[1] if len(vignette.split('\n')) > 1 else False
+
+    # ALFSG-PI
+    m = re.search(r'ALFSG-PI\):\s*([\d.]+)%', vignette)
+    data['alfsg_pi'] = float(m.group(1)) if m else None
+
+    # Current lab values (with stale detection)
+    def extract_lab(pattern, text):
+        m = re.search(pattern, text)
+        if not m:
+            return None, None, True
+        value = float(m.group(1))
+        stale_match = re.search(pattern.rstrip(')') + r'[^;]*\(from day (\d+)\)', text)
+        stale_day = int(stale_match.group(2)) if stale_match and len(stale_match.groups()) >= 2 else None
+        return value, stale_day, False
+
+    # INR
+    m = re.search(r'INR1 is ([\d.]+)', vignette)
+    data['current_inr'] = float(m.group(1)) if m else None
+    inr_stale = re.search(r'INR1 is [\d.]+ [^;]*\(from day (\d+)\)', vignette)
+    data['inr_stale_day'] = int(inr_stale.group(1)) if inr_stale else None
+
+    # ALT
+    m = re.search(r'ALT is ([\d.]+)', vignette)
+    data['current_alt'] = float(m.group(1)) if m else None
+
+    # Bilirubin
+    m = re.search(r'Bilirubin is ([\d.]+)', vignette)
+    data['current_bilirubin'] = float(m.group(1)) if m else None
+
+    # Creatinine
+    m = re.search(r'Creat is ([\d.]+)', vignette)
+    data['current_creatinine'] = float(m.group(1)) if m else None
+
+    # Lactate
+    m = re.search(r'Lactate is ([\d.]+)', vignette)
+    if m:
+        data['current_lactate'] = float(m.group(1))
+        data['lactate_missing'] = False
+        lactate_stale = re.search(r'Lactate is [\d.]+ [^;]*\(from day (\d+)\)', vignette)
+        data['lactate_stale_day'] = int(lactate_stale.group(1)) if lactate_stale else None
+    else:
+        data['current_lactate'] = None
+        data['lactate_missing'] = True
+        data['lactate_stale_day'] = None
+
+    # Ammonia
+    m = re.search(r'Ammonia is ([\d.]+)', vignette)
+    if m:
+        data['current_ammonia'] = float(m.group(1))
+        data['ammonia_missing'] = False
+    else:
+        data['current_ammonia'] = None
+        data['ammonia_missing'] = True
+
+    # PaO2/FiO2
+    m = re.search(r'Ratio PO2 FiO2 is ([\d.]+)', vignette)
+    data['pao2_fio2'] = float(m.group(1)) if m else None
+
+    # Clinical status
+    clinical = vignette[vignette.find('Clinical status'):] if 'Clinical status' in vignette else ''
+    data['has_infection'] = 'has documented infection' in clinical
+    data['on_ventilation'] = 'is receiving mechanical ventilation' in clinical and 'is not receiving mechanical ventilation' not in clinical
+    data['on_vasopressors'] = 'is receiving vasopressor support' in clinical and 'is not receiving vasopressor support' not in clinical
+    data['on_cvvh'] = ('is receiving CVVH' in clinical or 'is receiving continuous renal replacement' in clinical) and 'is not receiving CVVH' not in clinical
+
+    # HE grade
+    m = re.search(r'grade (\d) of hepatic encephalopathy', clinical)
+    data['he_grade'] = int(m.group(1)) if m else 0
+
+    # Parse trends to get peaks and trajectories
+    def parse_trend_values(lab_name, text):
+        pattern = rf'{lab_name} trend shows (.+?)(?:;|$)'
+        m = re.search(pattern, text)
+        if not m:
+            return [], []
+        trend_text = m.group(1)
+        values = re.findall(r'from ([\d.]+)', trend_text)
+        values_to = re.findall(r'to ([\d.]+)', trend_text)
+        all_vals = []
+        if values:
+            all_vals.append(float(values[0]))
+        for v in values_to:
+            all_vals.append(float(v))
+        directions = re.findall(r'(increasing|decreasing|stable)', trend_text)
+        return all_vals, directions
+
+    # INR trend
+    inr_vals, inr_dirs = parse_trend_values('INR1', vignette)
+    data['peak_inr'] = max(inr_vals) if inr_vals else data['current_inr']
+    if data['peak_inr'] and data['current_inr'] and data['peak_inr'] > 0:
+        data['inr_improvement_pct'] = (data['peak_inr'] - data['current_inr']) / data['peak_inr'] * 100
+    else:
+        data['inr_improvement_pct'] = 0
+
+    # ALT trend
+    alt_vals, alt_dirs = parse_trend_values('ALT', vignette)
+    data['peak_alt'] = max(alt_vals) if alt_vals else data['current_alt']
+    if data['peak_alt'] and data['current_alt'] and data['peak_alt'] > 0:
+        data['alt_decline_pct'] = (data['peak_alt'] - data['current_alt']) / data['peak_alt'] * 100
+    else:
+        data['alt_decline_pct'] = 0
+
+    # Bilirubin trend
+    bili_vals, bili_dirs = parse_trend_values('Bilirubin', vignette)
+    data['bilirubin_peak'] = max(bili_vals) if bili_vals else data['current_bilirubin']
+    data['bilirubin_first'] = bili_vals[0] if bili_vals else data['current_bilirubin']
+    if bili_dirs:
+        last_dir = bili_dirs[-1]
+        # Micro-rise tolerance: rise <=0.5 mg/dL is treated as stable (within lab measurement error)
+        if last_dir == 'increasing' and len(bili_vals) >= 2:
+            last_rise = bili_vals[-1] - bili_vals[-2]
+            if last_rise <= 0.5:
+                last_dir = 'stable'
+        data['bilirubin_declining'] = last_dir == 'decreasing'
+        data['bilirubin_rising'] = last_dir == 'increasing'
+        data['bilirubin_stable'] = last_dir == 'stable'
+    else:
+        data['bilirubin_declining'] = None
+        data['bilirubin_rising'] = None
+        data['bilirubin_stable'] = None
+    # Bilirubin declining from peak (even if last segment rising, overall may be past peak)
+    if data['bilirubin_peak'] and data['current_bilirubin']:
+        data['bilirubin_declining_from_peak'] = data['current_bilirubin'] < data['bilirubin_peak']
+    else:
+        data['bilirubin_declining_from_peak'] = False
+
+    # Creatinine trend
+    creat_vals, creat_dirs = parse_trend_values('Creat', vignette)
+    if creat_dirs:
+        data['creatinine_trend'] = creat_dirs[-1]  # most recent direction
+        data['creatinine_monotonic_rising'] = all(d == 'increasing' for d in creat_dirs) and len(creat_dirs) >= 4
+    else:
+        data['creatinine_trend'] = None
+        data['creatinine_monotonic_rising'] = False
+
+    # Lactate trend
+    lactate_vals, lactate_dirs = parse_trend_values('Lactate', vignette)
+    if lactate_dirs:
+        data['lactate_rising'] = lactate_dirs[-1] == 'increasing'
+    else:
+        data['lactate_rising'] = False
+    # Identical lactate detection (carried-forward artifact)
+    if lactate_vals and len(lactate_vals) >= 3:
+        last_3 = lactate_vals[-3:]
+        data['lactate_identical_artifact'] = len(set(last_3)) == 1
+    else:
+        data['lactate_identical_artifact'] = False
+
+    return data
+
+
+def classify_phenotype(data: dict) -> list:
+    """Classify patient into phenotype categories for conditional skill injection.
+
+    Returns a list of applicable phenotype tags (0 to N) that determine which
+    skill blocks each agent receives.
+    """
+    tags = []
+    day = data.get('day')
+    is_apap = data.get('is_apap', False)
+    he_grade = data.get('he_grade', 0)
+    current_inr = data.get('current_inr')
+    peak_inr = data.get('peak_inr')
+    inr_improvement = data.get('inr_improvement_pct', 0)
+    alt_decline = data.get('alt_decline_pct', 0)
+    current_alt = data.get('current_alt')
+    current_bili = data.get('current_bilirubin')
+    bili_declining = data.get('bilirubin_declining', False)
+    bili_rising = data.get('bilirubin_rising', False)
+    current_lactate = data.get('current_lactate')
+    lactate_missing = data.get('lactate_missing', False)
+    lactate_stale_day = data.get('lactate_stale_day')
+    lactate_identical = data.get('lactate_identical_artifact', False)
+    current_ammonia = data.get('current_ammonia')
+    ammonia_missing = data.get('ammonia_missing', True)
+    current_creat = data.get('current_creatinine')
+    on_vent = data.get('on_ventilation', False)
+    on_pressors = data.get('on_vasopressors', False)
+
+    alt_ok = alt_decline >= 80 or (current_alt is not None and current_alt < 100)
+
+    # Helper: stale lactate
+    def is_stale():
+        if lactate_identical:
+            return True
+        if lactate_stale_day is not None and day is not None:
+            return (day - lactate_stale_day) >= 3
+        return False
+
+    # 1. p1b_recovery: peak INR >=5, significant improvement
+    if peak_inr is not None and peak_inr >= 5.0 and inr_improvement >= 50 and alt_ok:
+        tags.append('p1b_recovery')
+
+    # 2. p1c_bilirubin_lag: moderate INR, ALT recovering, bilirubin may be lagging
+    if peak_inr is not None and 2.0 <= peak_inr <= 5.0 and alt_ok:
+        tags.append('p1c_bilirubin_lag')
+
+    # 3. extreme_bilirubin: bilirubin >15 in APAP, not declining
+    if is_apap and current_bili is not None and current_bili > 15 and not bili_declining:
+        tags.append('extreme_bilirubin')
+
+    # 4. stale_lactate: lactate is stale or has identical artifact
+    if not lactate_missing and current_lactate is not None and current_lactate > 2.0:
+        if is_stale():
+            tags.append('stale_lactate')
+
+    # 5. early_presentation: Day 1-3 with limited trajectory data
+    if day is not None and day <= 3:
+        tags.append('early_presentation')
+
+    # 6. uremic_he: grade 3-4 HE with low/missing ammonia + high creatinine
+    if he_grade >= 3:
+        if (current_ammonia is not None and current_ammonia < 50 and current_creat is not None and current_creat > 5):
+            tags.append('uremic_he')
+        elif ammonia_missing and current_creat is not None and current_creat > 3.0:
+            tags.append('uremic_he')
+
+    # 7. low_peak_inr: peak INR <2.0 in APAP (P1D pathway)
+    if is_apap and peak_inr is not None and peak_inr < 2.0:
+        tags.append('low_peak_inr')
+
+    # 8. early_metabolic_warning: Day 2-3 with ammonia >150 or lactate >4
+    if day is not None and 2 <= day <= 3:
+        if current_ammonia is not None and current_ammonia > 150:
+            tags.append('early_metabolic_warning')
+        if current_lactate is not None and current_lactate > 4:
+            tags.append('early_metabolic_warning')
+
+    # 9. ventilated_early: mechanical ventilation at Day 1-3
+    if day is not None and day <= 3 and on_vent:
+        tags.append('ventilated_early')
+
+    # Deduplicate
+    return list(dict.fromkeys(tags))
+
+
+# =========================================================
+# SKILL BLOCKS: phenotype-specific prompt fragments
+# Each skill block is a focused instruction set injected only
+# when the patient phenotype matches.
+# =========================================================
+
+SKILL_BLOCKS = {
+    'p1b_recovery': """
+## SKILL: Partial Recovery Assessment (Priority 1B)
+This patient has peak INR >=5.0 with significant improvement and ALT >80% down.
+- Priority 1B criteria: peak INR >=5.0, INR improved >=60% from peak, ALT >80% down, PLUS at least one of: lactate <2, HE grade 0-1, creatinine improving
+- INR improvement calculation: (peak - current) / peak. Example: peak 12.0 to current 2.46 = 79.5%
+- There is NO requirement for bilirubin to be declining. Rising bilirubin does NOT negate P1B
+- Negation requires ALL THREE: rising lactate AND worsening creatinine AND new infections. Vasopressors/ventilation alone do NOT negate
+- If P1B criteria are met and negation criteria are NOT all present, you MUST predict SURVIVAL
+- Isolated creatinine worsening in APAP is ATN lag, NOT multi-organ deterioration
+""",
+
+    'p1c_bilirubin_lag': """
+## SKILL: Bilirubin Lag Exception Assessment (Priority 1C)
+This patient has moderate peak INR (2.0-5.0) with ALT recovering -- evaluate for bilirubin lag.
+- Priority 1C criteria: peak INR 2.0-5.0, ALT >80% down, HE <=2, no ventilation (or APAP airway extension), lactate not blocking, creatinine OK
+- BILIRUBIN LAG in APAP: bilirubin excretory function recovers more slowly than synthetic function. Rising bilirubin in the first week with recovering INR/ALT is EXPECTED, not failure
+- If P1C criteria met AND bilirubin is rising BUT all other systems confirm recovery (HE 0-2, no vent, no pressors, no infection, creatinine OK, lactate <=2), the bilirubin lag exception applies
+- Ventilated APAP extension: if ventilation is for airway protection (PaO2/FiO2 >=2.0), APAP, no pressors, no infection -- ventilation condition is relaxed
+- Stale lactate provision: lactate <=2.0 from a prior day without subsequent deterioration satisfies the requirement
+""",
+
+    'extreme_bilirubin': """
+## SKILL: Extreme Bilirubin Override Assessment
+This patient has bilirubin >15 mg/dL in APAP with bilirubin NOT declining -- this is a CRITICAL death signal.
+- BINDING RULE: Bilirubin >15 in APAP, not declining, predict DEATH UNLESS ALL 5 conditions met:
+  (1) HE grade 0-1, (2) lactate <=2.0, (3) no mechanical ventilation, (4) no vasopressors, (5) no infection
+- If ANY SINGLE condition fails, predict DEATH. This is NON-NEGOTIABLE
+- Normal INR + declining ALT do NOT override extreme bilirubin with discordance
+- This override is SUPERSEDED by formal recovery criteria (P1/P1B/P1C) if those are met
+- Typical APAP bilirubin lag reaches ~8-12 mg/dL. Values >15 are NOT normal lagging
+""",
+
+    'stale_lactate': """
+## SKILL: Stale Lactate Interpretation
+This patient has an elevated lactate value (>2.0) that is STALE (>72 hours old or carried-forward artifact).
+- STALE HIGH LACTATE: A lactate >2.0 that is >72h old does NOT block recovery pathways unless corroborated by current vasopressors or acidosis
+- If the patient has no vasopressors and the lactate is stale, treat it as NON-BLOCKING for recovery criteria
+- IDENTICAL LACTATE ARTIFACT: If the last 3 lactate values are identical, this is a carried-forward data artifact, NOT a real measurement
+- Do NOT use stale lactate as primary evidence for predicting death
+- Check whether current hemodynamic status (vasopressors, pH) corroborates the old lactate value
+""",
+
+    'early_presentation': """
+## SKILL: Early Presentation Assessment (Day 1-3)
+This patient is at Day 1-3 with limited trajectory data.
+- At Day 1-3, concordant recovery CANNOT be demonstrated because there is no multi-day trajectory
+- Do NOT assume recovery will occur based on ALFSG-PI alone
+- Pre-Check B (Day 2-3): ammonia >150 OR lactate >4 not declining OR bilirubin rising = predict DEATH (BINDING)
+- Pre-Check C (Day 1-3): mechanical ventilation = predict DEATH (BINDING)
+- Day 1 exception for ammonia: ammonia >150 is NOT binding at Day 1 if HE grade 0-1 AND no ventilation AND no pressors
+- A declining ammonia that is STILL >150 at Day 2-3 is STILL above the lethal threshold
+- High-severity Day 1 with deep HE + ventilation + severe AKI = near-KCC phenotype, predict death
+""",
+
+    'uremic_he': """
+## SKILL: Uremic Encephalopathy Assessment
+This patient has grade 3-4 HE with low/missing ammonia and high creatinine -- evaluate for uremic origin.
+- BINDING DETERMINATION: If grade 3-4 HE AND ammonia <50 umol/L AND creatinine >5 mg/dL, the encephalopathy is UREMIC, not hepatic
+- Also: if ammonia is MISSING and creatinine >3.0, presume uremic
+- Uremic HE does NOT carry cerebral edema/herniation risk and is REVERSIBLE with renal replacement
+- If HE is uremic, the persistent grade 4 HE death override is NULLIFIED
+- CRRT status, ventilation status, neurologic improvement are ALL IRRELEVANT to the uremic determination
+- Proceed to assess liver trajectory without the HE penalty
+- COMBINATION SIGNAL: P1C liver recovery + uremic HE = STRONG survival signal
+""",
+
+    'low_peak_inr': """
+## SKILL: Low Peak INR Recovery Assessment (Priority 1D)
+This patient is APAP with peak INR <2.0 -- evaluate P1D pathway.
+- P1D-A: Peak INR <2.0, current INR <=1.5, ALT >80% down, HE <=2 (or uremic HE), no pressors, no rising lactate = SURVIVAL
+- P1D-B: ALT >90% down + current ALT <250, HE 0-1, no ventilation, no pressors, no CVVH, ammonia <100 or missing = SURVIVAL
+- CRITICAL: If peak INR <2.0, neither Priority 1B (requires >=5.0) nor Priority 1C (requires 2.0-5.0) can be invoked
+- The ONLY other recovery pathway is Priority 1 (INR <=1.5 + ALT >80% + bilirubin declining)
+- P1D does NOT override Extreme Bilirubin with discordance
+""",
+
+    'early_metabolic_warning': """
+## SKILL: Early Metabolic Warning Assessment (Day 2-3)
+This patient has critical metabolic derangements at Day 2-3.
+- BINDING at Day 2-3: ammonia >150 umol/L = predict DEATH regardless of other improvements
+  - A declining ammonia STILL >150 is STILL lethal (e.g., ammonia 152 down from 487 = STILL triggers)
+  - Ammonia >150 carries significant ICH risk (Kumar/Bernal) REGARDLESS of trajectory
+- Lactate >4 AND not declining = predict DEATH
+- Bilirubin actively rising through Days 1-3 = predict DEATH
+- This is BINDING and FINAL: do NOT override with partial INR/creatinine improvement
+- EXCEPTION: Day 1 ONLY, ammonia >150 NOT binding if ALL: HE 0-1, no ventilation, no pressors
+""",
+
+    'ventilated_early': """
+## SKILL: Early Ventilation Assessment (Day 1-3)
+This patient is on mechanical ventilation at Day 1-3.
+- BINDING: Mechanical ventilation at Day 1-3 = predict DEATH
+- Ventilation at Day 1-3 indicates disease severity beyond what lab trajectories can assess in 1-3 days
+- Even with improving hepatic markers (INR declining, ALT down), ventilator dependence at Day 1-3 is incompatible with spontaneous recovery prediction
+- ALFSG-PI does NOT model ventilation -- a favorable ALFSG-PI (even >80%) is UNRELIABLE with ventilation
+- Do NOT let improving liver labs override ventilation at Day 1-3
+""",
+}
+
+
+def select_skills(phenotype_tags: list) -> str:
+    """Select and concatenate skill blocks based on phenotype tags."""
+    if not phenotype_tags:
+        return ""
+    blocks = []
+    for tag in phenotype_tags:
+        if tag in SKILL_BLOCKS:
+            blocks.append(SKILL_BLOCKS[tag])
+    if not blocks:
+        return ""
+    return "\n# PHENOTYPE-SPECIFIC SKILLS (injected based on this patient's clinical profile)\n" + "\n".join(blocks)
+
+
+def format_binding_rules_skill(data: dict) -> str:
+    """Run deterministic binding rules and format the result as an injected skill block.
+
+    Instead of silently overriding the LLM after the fact, this tells the LLM
+    what the deterministic rules computed so it can incorporate that into its reasoning.
+    """
+    override_pred, override_reason = evaluate_binding_rules(data)
+    if override_pred is None:
+        return ""
+
+    if override_pred == "Yes":
+        return f"""
+## BINDING RULE: Deterministic Criteria Engine Result
+The deterministic criteria engine has evaluated this patient's clinical values against validated recovery criteria.
+
+**RESULT: SURVIVAL CRITERIA MET**
+{override_reason}
+
+This is a BINDING rule computed from exact threshold checks on extracted clinical values.
+The criteria engine uses the same validated thresholds (P1/P1B/P1C/P1D/Combination Signal/Extreme Bilirubin Waiver) described in your instructions.
+You MUST predict **Yes** (survival) unless you can identify SPECIFIC active multi-organ deterioration
+(rising lactate AND worsening creatinine AND new infections -- all three required for negation).
+Isolated concerns (ventilation alone, creatinine alone, bilirubin rising alone) do NOT negate binding survival criteria.
+"""
+    else:
+        return f"""
+## BINDING RULE: Deterministic Criteria Engine Result
+The deterministic criteria engine has evaluated this patient's clinical values against validated death override criteria.
+
+**RESULT: DEATH OVERRIDE TRIGGERED**
+{override_reason}
+
+This is a BINDING rule computed from exact threshold checks on extracted clinical values.
+You MUST predict **No** (death/transplant) unless ALL exception conditions specified in the rule are met.
+Do NOT rationalize around this override with partial improvements or favorable ALFSG-PI scores.
+"""
+
+
+def evaluate_binding_rules(data: dict) -> tuple:
+    """Evaluate deterministic binding rules on parsed vignette data.
+
+    Returns (override_prediction, override_reason) or (None, None) if no override.
+    override_prediction is "Yes" (survival) or "No" (death).
+    """
+    day = data.get('day')
+    is_apap = data.get('is_apap', False)
+    current_inr = data.get('current_inr')
+    peak_inr = data.get('peak_inr')
+    inr_improvement = data.get('inr_improvement_pct', 0)
+    current_alt = data.get('current_alt')
+    peak_alt = data.get('peak_alt')
+    alt_decline = data.get('alt_decline_pct', 0)
+    current_bili = data.get('current_bilirubin')
+    bili_declining = data.get('bilirubin_declining')
+    bili_rising = data.get('bilirubin_rising')
+    bili_declining_from_peak = data.get('bilirubin_declining_from_peak')
+    he_grade = data.get('he_grade', 0)
+    has_infection = data.get('has_infection', False)
+    on_vent = data.get('on_ventilation', False)
+    on_pressors = data.get('on_vasopressors', False)
+    on_cvvh = data.get('on_cvvh', False)
+    current_lactate = data.get('current_lactate')
+    lactate_missing = data.get('lactate_missing', False)
+    lactate_stale_day = data.get('lactate_stale_day')
+    lactate_rising = data.get('lactate_rising', False)
+    lactate_identical = data.get('lactate_identical_artifact', False)
+    current_creat = data.get('current_creatinine')
+    creat_trend = data.get('creatinine_trend')
+    creat_mono_rising = data.get('creatinine_monotonic_rising', False)
+    current_ammonia = data.get('current_ammonia')
+    ammonia_missing = data.get('ammonia_missing', True)
+    pao2_fio2 = data.get('pao2_fio2')
+    alfsg_pi = data.get('alfsg_pi')
+
+    # Helper: is lactate effectively stale?
+    def is_lactate_stale():
+        if lactate_missing:
+            return False
+        if lactate_identical:
+            return True
+        if lactate_stale_day is not None and day is not None:
+            return (day - lactate_stale_day) >= 3
+        return False
+
+    # Helper: is lactate <=2 (met as positive criterion)?
+    def lactate_le_2():
+        if lactate_missing:
+            return False  # missing does NOT satisfy positive criteria
+        if current_lactate is not None and current_lactate <= 2.0:
+            return True
+        # Stale high lactate >72h old without hemodynamic instability
+        if is_lactate_stale() and not on_pressors:
+            return True  # stale high lactate doesn't block
+        return False
+
+    # Helper: does lactate NOT block (either <=2, stale, or missing)?
+    def lactate_not_blocking():
+        if lactate_missing:
+            return True
+        if current_lactate is not None and current_lactate <= 2.0:
+            return True
+        if is_lactate_stale() and not on_pressors:
+            return True
+        return False
+
+    # Helper: is HE uremic?
+    def is_uremic_he():
+        if he_grade < 3:
+            return False
+        if current_ammonia is not None and current_ammonia < 50 and current_creat is not None and current_creat > 5:
+            return True
+        # Missing ammonia + Cr > 5 → presume uremic (Fix #12)
+        if ammonia_missing and current_creat is not None and current_creat > 3.0:
+            return True
+        return False
+
+    # Only apply post-processing at Day 5+
+    if day is not None and day < 5:
+        return None, None
+
+    # Track which criteria are met for logging
+    reasons = []
+
+    # =========================================================
+    # DEATH OVERRIDES (Yes → No) - Check FIRST for safety
+    # =========================================================
+
+    # Fix #16: Extreme persistent INR without trajectory
+    if (day is not None and day >= 5 and current_inr is not None and current_inr > 6.5
+            and he_grade >= 2 and current_bili is not None and current_bili > 5
+            and inr_improvement < 20):  # no real improvement
+        return "No", "POST-PROCESSING DEATH OVERRIDE: Extreme persistent INR >6.5 without trajectory at Day 5+, HE >=2, bilirubin >5"
+
+    # Fix #14: Extrahepatic deterioration negation
+    if (creat_mono_rising and he_grade >= 4 and not is_uremic_he()
+            and current_creat is not None and current_creat > 3.5 and not on_cvvh):
+        return "No", "POST-PROCESSING DEATH OVERRIDE: Extrahepatic deterioration - creatinine monotonically rising 4+ days, grade 4 HE, no RRT despite Cr >3.5"
+
+    # =========================================================
+    # SURVIVAL OVERRIDES (No → Yes) - Recovery criteria check
+    # =========================================================
+
+    # Priority 1: INR <=1.5 + ALT >80% down + bilirubin declining
+    p1_met = False
+    if (current_inr is not None and current_inr <= 1.5
+            and (alt_decline >= 80 or (current_alt is not None and current_alt < 100))
+            and bili_declining):
+        # P1 negation check: non-uremic grade 4 HE + PaO2/FiO2 < 1.5 + infection
+        p1_negated = (he_grade >= 4 and not is_uremic_he()
+                      and pao2_fio2 is not None and pao2_fio2 < 1.5
+                      and has_infection)
+        if not p1_negated:
+            p1_met = True
+            reasons.append("P1: INR <=1.5, ALT >80% down, bilirubin declining")
+
+    # Priority 1B: Peak INR >=5.0, INR improved >=60%, ALT >80% down + additional condition
+    # Safety gate: don't override for HE >=4 non-uremic (57.9% precision too risky)
+    p1b_met = False
+    if (peak_inr is not None and peak_inr >= 5.0
+            and inr_improvement >= 60
+            and (alt_decline >= 80 or (current_alt is not None and current_alt < 100))
+            and (he_grade <= 3 or is_uremic_he())):
+        # Additional condition: lactate <2 OR HE 0-1 OR creatinine improving
+        additional = (lactate_le_2() or he_grade <= 1
+                      or (creat_trend == 'decreasing')
+                      or (current_creat is not None and current_creat < 1.2))
+        # Relaxed INR threshold: >=55% when ALT >90% down
+        if not additional and inr_improvement >= 55 and alt_decline >= 90:
+            additional = True
+        # P1B negation: ALL THREE of rising lactate + worsening creatinine + new infection
+        p1b_negated = (lactate_rising and creat_trend == 'increasing' and has_infection)
+        if additional and not p1b_negated:
+            p1b_met = True
+            reasons.append(f"P1B: peak INR {peak_inr}, {inr_improvement:.1f}% improved, ALT {alt_decline:.1f}% down")
+
+    # Priority 1C: Peak INR 2.0-5.0 + ALT >80% down + bilirubin lag exception
+    p1c_met = False
+    if (peak_inr is not None and 2.0 <= peak_inr <= 5.0
+            and (alt_decline >= 80 or (current_alt is not None and current_alt < 100))):
+        # Bilirubin lag exception conditions (with Fix #2 relaxations)
+        he_ok = he_grade <= 2  # Fix #2: expanded from 0-1 to 0-2
+        vent_ok = not on_vent
+        # Fix #2: Ventilated APAP extension
+        if on_vent and is_apap and not on_pressors and not has_infection:
+            if pao2_fio2 is not None and pao2_fio2 >= 2.0:
+                vent_ok = True
+            elif pao2_fio2 is None:
+                vent_ok = True  # no PaO2/FiO2 data, assume airway protection
+        lactate_ok = lactate_not_blocking()
+        creat_ok = (creat_trend in ('decreasing', 'stable', None)
+                    or (is_apap and current_creat is not None))  # ATN exemption for APAP
+
+        if he_ok and vent_ok and lactate_ok and creat_ok:
+            p1c_met = True
+            reasons.append(f"P1C (bilirubin lag): peak INR {peak_inr}, ALT {alt_decline:.1f}% down, HE {he_grade}, lag exception met")
+
+    # Priority 1D: Low peak INR / ALT-dominant recovery (Fix #4, #22)
+    # Safety: P1D does NOT override Extreme Bilirubin with discordance
+    p1d_met = False
+    extreme_bili_discordance = (current_bili is not None and current_bili > 15 and is_apap
+                                and not bili_declining
+                                and (he_grade >= 2 or on_vent or on_pressors or has_infection))
+    if is_apap and day is not None and day >= 5 and not extreme_bili_discordance:
+        # Pathway A: Peak INR <2.0
+        # HE <=2 required, BUT uremic HE (grade 3-4 with ammonia <50, Cr >5) is exempted
+        he_ok_p1d_a = he_grade <= 2 or is_uremic_he()
+        if (peak_inr is not None and peak_inr < 2.0
+                and current_inr is not None and current_inr <= 1.5
+                and (alt_decline >= 80 or (current_alt is not None and current_alt < 100))
+                and he_ok_p1d_a and not on_pressors and not lactate_rising):
+            p1d_met = True
+            reasons.append(f"P1D-A: peak INR {peak_inr} <2.0, current INR {current_inr}, ALT {alt_decline:.1f}% down")
+        # Pathway B: ALT-dominant
+        if (alt_decline >= 90 and current_alt is not None and current_alt < 250
+                and he_grade <= 1 and not on_vent and not on_pressors and not on_cvvh
+                and (ammonia_missing or (current_ammonia is not None and current_ammonia < 100))):
+            p1d_met = True
+            reasons.append(f"P1D-B: ALT {alt_decline:.1f}% down, current ALT {current_alt}, HE {he_grade}")
+
+    # Combination Signal: P1C + uremic HE
+    combo_met = False
+    if p1c_met and is_uremic_he():
+        combo_met = True
+        reasons.append("COMBINATION: P1C met + uremic HE confirmed")
+
+    # Extreme Bilirubin 5-condition waiver (Fix #19)
+    waiver_met = False
+    if (current_bili is not None and current_bili > 15 and is_apap
+            and not bili_declining and not (p1_met or p1b_met or p1c_met or p1d_met)):
+        # Check 5 conditions for waiver
+        if (he_grade <= 1 and lactate_not_blocking()
+                and not on_vent and not on_pressors and not has_infection):
+            # Also need lactate <=2 as positive criterion for waiver
+            if lactate_le_2() or (is_lactate_stale() and not on_pressors):
+                waiver_met = True
+                reasons.append(f"EXTREME BILIRUBIN WAIVER: All 5 conditions met (HE {he_grade}, no vent, no pressors, no infection, lactate OK)")
+
+    # Near-recovery exception to Rule 5B: NOT enforced in post-processing
+    # (60% precision too risky for deterministic override; left to LLM judgment)
+
+    # Determine if any survival override applies
+    any_recovery = p1_met or p1b_met or p1c_met or p1d_met or combo_met or waiver_met
+
+    if any_recovery:
+        reason_str = "POST-PROCESSING SURVIVAL OVERRIDE: " + "; ".join(reasons)
+        return "Yes", reason_str
+
+    return None, None
+
+
+def format_criteria_evaluation(vignette: str) -> str:
+    """Parse vignette and format pre-computed criteria evaluation for LLM injection.
+
+    This eliminates LLM calculation errors by providing exact values for binding criteria.
+    """
+    if os.getenv("CRITERIA_INJECTION_ENABLED", "1") != "1":
+        return ""
+
+    data = parse_vignette(vignette)
+    day = data.get('day')
+    if day is None or day < 1:
+        return ""
+
+    # Day 1-4: only inject Pre-Check B/C exception values (not full recovery criteria)
+    if day < 5:
+        early_lines = []
+        early_lines.append("DETERMINISTIC PRE-CHECK VALUES (extracted from clinical data -- use these exact values):")
+        early_lines.append(f"  Day: {day}")
+        early_lines.append(f"  Etiology: {'APAP' if data.get('is_apap') else 'Non-APAP'}")
+        if data.get('alfsg_pi') is not None:
+            early_lines.append(f"  ALFSG-PI: {data['alfsg_pi']:.1f}%")
+        early_lines.append(f"  HE grade: {data.get('he_grade', 'unknown')}")
+        early_lines.append(f"  Mechanical ventilation: {'YES' if data.get('on_ventilation') else 'NO'}")
+        early_lines.append(f"  Vasopressors: {'YES' if data.get('on_vasopressors') else 'NO'}")
+        if data.get('ammonia_missing'):
+            early_lines.append(f"  Ammonia: NOT REPORTED")
+        else:
+            early_lines.append(f"  Ammonia: {data.get('current_ammonia')}")
+        if data.get('lactate_missing'):
+            early_lines.append(f"  Lactate: MISSING")
+        else:
+            early_lines.append(f"  Lactate: {data.get('current_lactate')}")
+        early_lines.append(f"  Current Bilirubin: {data.get('current_bilirubin')}")
+        early_lines.append(f"  Bilirubin trend: {'rising' if data.get('bilirubin_rising') else ('declining' if data.get('bilirubin_declining') else 'stable/unknown')}")
+        early_lines.append(f"  Current INR: {data.get('current_inr')}")
+        early_lines.append(f"  INR improvement from peak: {data.get('inr_improvement_pct', 0):.1f}%")
+        early_lines.append(f"  ALT decline from peak: {data.get('alt_decline_pct', 0):.1f}%")
+        early_lines.append("")
+        early_lines.append("PRE-CHECK EVALUATION:")
+        # Pre-Check B: early metabolic warning
+        if day >= 2:
+            ammonia_val = data.get('current_ammonia')
+            lactate_val = data.get('current_lactate')
+            lactate_rising_flag = data.get('lactate_rising', False)
+            bili_rising_flag = data.get('bilirubin_rising', False)
+            triggers = []
+            if ammonia_val is not None and ammonia_val > 150:
+                triggers.append(f"Ammonia {ammonia_val} >150")
+            if lactate_val is not None and lactate_val > 4 and not data.get('bilirubin_declining', False):
+                triggers.append(f"Lactate {lactate_val} >4")
+            if bili_rising_flag:
+                # Pre-Check B magnitude requirement: bilirubin rise must be clinically significant
+                # Cumulative rise >2 mg/dL AND current >5 mg/dL
+                bili_first = data.get('bilirubin_first') or 0
+                bili_current = data.get('current_bilirubin') or 0
+                cumulative_rise = bili_current - bili_first
+                if cumulative_rise > 2 and bili_current > 5:
+                    triggers.append(f"Bilirubin actively rising (cumulative +{cumulative_rise:.1f}, current {bili_current:.1f} >5)")
+                else:
+                    early_lines.append(f"  Note: Bilirubin is rising but below magnitude threshold (rise {cumulative_rise:.1f} mg/dL, current {bili_current:.1f}) -- does NOT trigger Pre-Check B")
+            if triggers:
+                early_lines.append(f"  Pre-Check B (Day 2-3 metabolic warning): TRIGGERED -- {', '.join(triggers)}")
+                early_lines.append(f"    This is BINDING at Day 2-3. Predict DEATH unless Day 1 exception applies.")
+            else:
+                early_lines.append(f"  Pre-Check B (Day 2-3 metabolic warning): NOT TRIGGERED")
+        # Pre-Check C: ventilation at Day 1-3
+        if data.get('on_ventilation'):
+            early_lines.append(f"  Pre-Check C (ventilation at Day 1-3): TRIGGERED -- patient on mechanical ventilation at Day {day}")
+            early_lines.append(f"    This is BINDING. Predict DEATH.")
+            # Exception A: Hyperacute APAP recovery
+            exception_met = False
+            inr_imp = data.get('inr_improvement_pct', 0)
+            alt_dec = data.get('alt_decline_pct', 0)
+            pao2 = data.get('pao2_fio2')
+            if data.get('is_apap') and day >= 2:
+                if (inr_imp >= 75 and alt_dec >= 90 and data.get('bilirubin_declining')
+                        and not data.get('on_vasopressors') and pao2 is not None and pao2 >= 1.9):
+                    early_lines.append(f"    EXCEPTION A (Hyperacute APAP Recovery): INR improved {inr_imp:.1f}% >=75%, ALT declined {alt_dec:.1f}% >=90%, bilirubin declining, no vasopressors, PaO2/FiO2 {pao2:.1f} >=1.9")
+                    early_lines.append(f"    Exception IS MET -- Pre-Check C is WAIVED. Follow weighted vote.")
+                    exception_met = True
+                elif inr_imp >= 50 and alt_dec >= 80:
+                    alfsg = data.get('alfsg_pi')
+                    no_pressors = not data.get('on_vasopressors')
+                    no_infection = not data.get('has_infection')
+                    if alfsg is not None and alfsg >= 80 and no_pressors and no_infection:
+                        early_lines.append(f"    EXCEPTION A (Relaxed -- strong APAP recovery): INR improved {inr_imp:.1f}% >=50%, ALT declined {alt_dec:.1f}% >=80%, ALFSG-PI {alfsg:.1f}% >=80%, no vasopressors, no infection")
+                        early_lines.append(f"    Exception IS MET -- Pre-Check C is WAIVED. Follow weighted vote.")
+                        exception_met = True
+            # Exception B: Non-APAP preserved function
+            if not exception_met and not data.get('is_apap'):
+                current_inr = data.get('current_inr') or 99
+                current_bili = data.get('current_bilirubin') or 99
+                alfsg = data.get('alfsg_pi')
+                if (current_inr <= 1.5 and current_bili <= 3.0 and alfsg is not None and alfsg >= 80
+                        and not data.get('on_vasopressors') and not data.get('has_infection')):
+                    early_lines.append(f"    EXCEPTION B (Non-APAP Preserved Function): INR {current_inr} <=1.5, bilirubin {current_bili} <=3.0, ALFSG-PI {alfsg:.1f}% >=80%, no vasopressors, no infection")
+                    early_lines.append(f"    Exception IS MET -- Pre-Check C is WAIVED. Follow weighted vote.")
+                    exception_met = True
+            if not exception_met:
+                early_lines.append(f"    No Pre-Check C exception applies. DEATH prediction is BINDING.")
+        else:
+            early_lines.append(f"  Pre-Check C (ventilation at Day 1-3): NOT TRIGGERED -- no mechanical ventilation")
+
+        return "\n".join(early_lines)
+
+    lines = []
+    lines.append("DETERMINISTIC CRITERIA PRE-COMPUTATION (values extracted from clinical data -- use these exact values):")
+
+    # Key extracted values
+    lines.append(f"  Day: {day}")
+    lines.append(f"  Etiology: {'APAP' if data.get('is_apap') else 'Non-APAP'}")
+    if data.get('alfsg_pi') is not None:
+        lines.append(f"  ALFSG-PI: {data['alfsg_pi']:.1f}%")
+
+    # INR
+    lines.append(f"  Current INR: {data.get('current_inr')}")
+    lines.append(f"  Peak INR: {data.get('peak_inr')}")
+    lines.append(f"  INR improvement from peak: {data.get('inr_improvement_pct', 0):.1f}%")
+
+    # ALT
+    lines.append(f"  Current ALT: {data.get('current_alt')}")
+    lines.append(f"  Peak ALT: {data.get('peak_alt')}")
+    lines.append(f"  ALT decline from peak: {data.get('alt_decline_pct', 0):.1f}%")
+    if data.get('current_alt') is not None and data['current_alt'] < 100:
+        lines.append(f"  ALT <100 U/L: YES (>80% threshold considered met per ALT Absolute Threshold rule)")
+
+    # Bilirubin
+    lines.append(f"  Current Bilirubin: {data.get('current_bilirubin')}")
+    lines.append(f"  Bilirubin trend (last segment): {'declining' if data.get('bilirubin_declining') else ('rising' if data.get('bilirubin_rising') else 'stable/unknown')}")
+    if data.get('bilirubin_declining_from_peak'):
+        lines.append(f"  Bilirubin declining from peak ({data.get('bilirubin_peak')}): YES")
+
+    # Clinical status
+    lines.append(f"  HE grade: {data.get('he_grade', 'unknown')}")
+    lines.append(f"  Infection: {'YES' if data.get('has_infection') else 'NO'}")
+    lines.append(f"  Mechanical ventilation: {'YES' if data.get('on_ventilation') else 'NO'}")
+    lines.append(f"  Vasopressors: {'YES' if data.get('on_vasopressors') else 'NO'}")
+    lines.append(f"  CVVH: {'YES' if data.get('on_cvvh') else 'NO'}")
+
+    # Lactate
+    if data.get('lactate_missing'):
+        lines.append(f"  Lactate: MISSING (never measured) -- does NOT block recovery pathways, does NOT satisfy positive criteria")
+    else:
+        stale_info = ""
+        if data.get('lactate_stale_day') is not None:
+            age = day - data['lactate_stale_day']
+            stale_info = f" (from day {data['lactate_stale_day']}, {age} days old"
+            if age >= 3:
+                stale_info += " -- STALE per >72h rule)"
+            else:
+                stale_info += ")"
+        lines.append(f"  Lactate: {data.get('current_lactate')}{stale_info}")
+        if data.get('lactate_identical_artifact'):
+            lines.append(f"  Lactate identical artifact: YES (carried-forward data artifact)")
+
+    # Ammonia
+    if data.get('ammonia_missing'):
+        lines.append(f"  Ammonia: NOT REPORTED")
+    else:
+        lines.append(f"  Ammonia: {data.get('current_ammonia')}")
+
+    # Creatinine
+    lines.append(f"  Creatinine: {data.get('current_creatinine')}")
+    if data.get('creatinine_trend'):
+        lines.append(f"  Creatinine trend (last segment): {data['creatinine_trend']}")
+
+    # Pre-computed criteria evaluation
+    lines.append("")
+    lines.append("CRITERIA CHECKLIST (pre-computed -- verify against your own analysis):")
+
+    # P1
+    inr_ok = data.get('current_inr') is not None and data['current_inr'] <= 1.5
+    alt_ok = data.get('alt_decline_pct', 0) >= 80 or (data.get('current_alt') is not None and data['current_alt'] < 100)
+    bili_ok = data.get('bilirubin_declining', False)
+    lines.append(f"  Priority 1: INR <=1.5? {'YES' if inr_ok else 'NO'} | ALT >80% down? {'YES' if alt_ok else 'NO'} | Bilirubin declining? {'YES' if bili_ok else 'NO'} --> {'ALL MET' if (inr_ok and alt_ok and bili_ok) else 'NOT MET'}")
+
+    # P1B
+    peak_inr = data.get('peak_inr')
+    p1b_applicable = peak_inr is not None and peak_inr >= 5.0
+    inr_imp = data.get('inr_improvement_pct', 0)
+    if p1b_applicable:
+        lines.append(f"  Priority 1B: Peak INR >=5.0? YES ({peak_inr}) | INR improved >=60%? {'YES' if inr_imp >= 60 else 'NO'} ({inr_imp:.1f}%) | ALT >80% down? {'YES' if alt_ok else 'NO'} --> {'CRITERIA MET (check additional condition)' if (inr_imp >= 60 and alt_ok) else 'NOT MET'}")
+    else:
+        lines.append(f"  Priority 1B: Peak INR >=5.0? NO ({peak_inr}) --> NOT APPLICABLE")
+
+    # P1C
+    p1c_applicable = peak_inr is not None and 2.0 <= peak_inr <= 5.0
+    if p1c_applicable:
+        he_ok = data.get('he_grade', 99) <= 2
+        vent_ok = not data.get('on_ventilation', False)
+        is_apap = data.get('is_apap', False)
+        if data.get('on_ventilation') and is_apap and not data.get('on_vasopressors') and not data.get('has_infection'):
+            vent_ok = True  # ventilated APAP extension
+        # Lactate OK: missing (non-blocking), <=2, or stale >72h without pressors
+        _lactate_missing = data.get('lactate_missing', False)
+        _lactate_le2 = data.get('current_lactate') is not None and data['current_lactate'] <= 2.0
+        _lactate_stale_day = data.get('lactate_stale_day')
+        _lactate_identical = data.get('lactate_identical_artifact', False)
+        _is_stale = _lactate_identical or (_lactate_stale_day is not None and day is not None and (day - _lactate_stale_day) >= 3)
+        _stale_no_pressors = _is_stale and not data.get('on_vasopressors', False)
+        lactate_ok = _lactate_missing or _lactate_le2 or _stale_no_pressors
+        lactate_detail = ""
+        if _stale_no_pressors and not _lactate_le2 and not _lactate_missing:
+            lactate_detail = f" (stale >72h, no pressors -- non-blocking)"
+        lines.append(f"  Priority 1C (bilirubin lag): Peak INR 2-5? YES ({peak_inr}) | ALT >80% down? {'YES' if alt_ok else 'NO'} | HE <=2? {'YES' if he_ok else 'NO'} (grade {data.get('he_grade')}) | No vent (or APAP extension)? {'YES' if vent_ok else 'NO'} | Lactate OK? {'YES' if lactate_ok else 'NO'}{lactate_detail} --> {'ALL MET' if (alt_ok and he_ok and vent_ok and lactate_ok) else 'NOT MET'}")
+    else:
+        lines.append(f"  Priority 1C: Peak INR 2.0-5.0? NO ({peak_inr}) --> NOT APPLICABLE")
+
+    # P1D (with extreme bilirubin discordance guard)
+    if data.get('is_apap'):
+        extreme_bili_block = (data.get('current_bilirubin') is not None and data['current_bilirubin'] > 15
+                              and not data.get('bilirubin_declining')
+                              and (data.get('he_grade', 0) >= 2 or data.get('on_ventilation') or data.get('on_vasopressors') or data.get('has_infection')))
+        if peak_inr is not None and peak_inr < 2.0:
+            p1d_a = inr_ok and alt_ok and data.get('he_grade', 99) <= 2 and not data.get('on_vasopressors') and not extreme_bili_block
+            bili_note = " | BLOCKED by Extreme Bilirubin discordance" if extreme_bili_block else ""
+            lines.append(f"  Priority 1D-A: Peak INR <2.0? YES ({peak_inr}) | INR <=1.5? {'YES' if inr_ok else 'NO'} | ALT >80% down? {'YES' if alt_ok else 'NO'} | HE <=2? {'YES' if data.get('he_grade', 99) <= 2 else 'NO'}{bili_note} --> {'ALL MET' if p1d_a else 'NOT MET'}")
+        alt_90 = data.get('alt_decline_pct', 0) >= 90 and data.get('current_alt') is not None and data['current_alt'] < 250
+        he_01 = data.get('he_grade', 99) <= 1
+        no_support = not data.get('on_ventilation') and not data.get('on_vasopressors') and not data.get('on_cvvh')
+        if alt_90 or he_01:
+            lines.append(f"  Priority 1D-B: ALT >90% down + <250? {'YES' if alt_90 else 'NO'} | HE 0-1? {'YES' if he_01 else 'NO'} | No organ support? {'YES' if no_support else 'NO'} --> {'ALL MET' if (alt_90 and he_01 and no_support) else 'NOT MET'}")
+
+    # Uremic HE
+    he_grade = data.get('he_grade', 0)
+    ammonia = data.get('current_ammonia')
+    creat = data.get('current_creatinine')
+    if he_grade >= 3:
+        is_uremic = (ammonia is not None and ammonia < 50 and creat is not None and creat > 5) or (data.get('ammonia_missing') and creat is not None and creat > 3.0)
+        lines.append(f"  Uremic HE check: HE >=3? YES (grade {he_grade}) | Ammonia <50? {'YES' if ammonia is not None and ammonia < 50 else ('MISSING' if data.get('ammonia_missing') else 'NO')} | Creatinine >5? {'YES' if creat is not None and creat > 5 else 'NO'} --> {'UREMIC HE' if is_uremic else 'NOT UREMIC'}")
+
+    # Combination Signal: P1C liver criteria + uremic HE
+    if he_grade >= 3:
+        # P1C liver criteria (independent of HE grade): peak INR 2-5, ALT >80% down, lactate <=2, bilirubin declining from peak
+        p1c_liver_inr = peak_inr is not None and 2.0 <= peak_inr <= 5.0
+        p1c_liver_alt = alt_ok
+        # Lactate check aligned with lactate_not_blocking(): <=2 OR stale >72h without pressors OR missing
+        _cl_missing = data.get('lactate_missing', False)
+        _cl_le2 = data.get('current_lactate') is not None and data['current_lactate'] <= 2.0
+        _cl_stale_day = data.get('lactate_stale_day')
+        _cl_identical = data.get('lactate_identical_artifact', False)
+        _cl_is_stale = _cl_identical or (_cl_stale_day is not None and day is not None and (day - _cl_stale_day) >= 3)
+        _cl_stale_ok = _cl_is_stale and not data.get('on_vasopressors', False)
+        p1c_liver_lactate = _cl_missing or _cl_le2 or _cl_stale_ok
+        p1c_liver_bili = data.get('bilirubin_declining_from_peak', False)
+        p1c_liver_met = p1c_liver_inr and p1c_liver_alt and p1c_liver_lactate and p1c_liver_bili
+
+        is_uremic = (ammonia is not None and ammonia < 50 and creat is not None and creat > 5) or (data.get('ammonia_missing') and creat is not None and creat > 3.0)
+
+        if p1c_liver_inr or is_uremic:  # only show if potentially relevant
+            lines.append(f"  COMBINATION SIGNAL: P1C liver criteria (peak INR 2-5? {'YES' if p1c_liver_inr else 'NO'} | ALT >80%? {'YES' if p1c_liver_alt else 'NO'} | Lactate <=2? {'YES' if p1c_liver_lactate else 'NO'} | Bilirubin declining from peak? {'YES' if p1c_liver_bili else 'NO'}) + Uremic HE? {'YES' if is_uremic else 'NO'} --> {'BINDING SURVIVAL' if (p1c_liver_met and is_uremic) else 'NOT MET'}")
+
+    # Extreme Bilirubin trigger
+    if data.get('current_bilirubin') is not None and data['current_bilirubin'] > 15 and data.get('is_apap') and not data.get('bilirubin_declining'):
+        waiver_he = data.get('he_grade', 99) <= 1
+        # Lactate check aligned with lactate_not_blocking(): <=2 OR stale >72h without pressors
+        _wl_le2 = data.get('current_lactate') is not None and data['current_lactate'] <= 2.0
+        _wl_stale_day = data.get('lactate_stale_day')
+        _wl_identical = data.get('lactate_identical_artifact', False)
+        _wl_is_stale = _wl_identical or (_wl_stale_day is not None and day is not None and (day - _wl_stale_day) >= 3)
+        _wl_stale_ok = _wl_is_stale and not data.get('on_vasopressors', False)
+        waiver_lact = _wl_le2 or _wl_stale_ok  # missing does NOT satisfy positive waiver criteria
+        waiver_vent = not data.get('on_ventilation')
+        waiver_press = not data.get('on_vasopressors')
+        waiver_inf = not data.get('has_infection')
+        all_waiver = waiver_he and waiver_lact and waiver_vent and waiver_press and waiver_inf
+        lines.append(f"  Extreme Bilirubin triggered: Bilirubin {data['current_bilirubin']} >15, not declining, APAP")
+        lines.append(f"    5-condition waiver: HE 0-1? {'YES' if waiver_he else 'NO'} | Lactate <=2? {'YES' if waiver_lact else 'NO'} | No vent? {'YES' if waiver_vent else 'NO'} | No pressors? {'YES' if waiver_press else 'NO'} | No infection? {'YES' if waiver_inf else 'NO'} --> {'WAIVER APPLIES' if all_waiver else 'WAIVER FAILS'}")
+
+    return "\n".join(lines)
+
+
+    # apply_post_processing() removed in v1.2.0-dev.
+    # Binding rules are now injected as a skill block into all agent prompts.
+    # The LLM makes the final decision informed by deterministic criteria -- no post-hoc override.
+
 
 def get_azure_openai_client(deployment_name: str = None):
     """Initialize client (OpenAI or Anthropic Foundry) based on deployment name.
@@ -294,6 +1199,7 @@ Please respond with a valid JSON object. Return only JSON, no additional text.""
                 response_format={"type": "json_object"},
                 max_completion_tokens=16384,
                 seed=42,  # Use seed for deterministic outputs (GPT-5 doesn't support temperature=0)
+                timeout=120,  # 2-minute timeout to prevent hung API calls
             )
         else:
             completion = client.chat.completions.create(
@@ -303,6 +1209,7 @@ Please respond with a valid JSON object. Return only JSON, no additional text.""
                     {"role": "user", "content": user_prompt}
                 ],
                 max_completion_tokens=16384,
+                timeout=120,  # 2-minute timeout to prevent hung API calls
             )
         
         response_text = completion.choices[0].message.content
@@ -344,15 +1251,15 @@ Your reasoning should be grounded in the following peer-reviewed evidence:
 9. **Recovery Concordance Assessment (CRITICAL):** The strongest predictor of ALF outcome is whether improvement is CONCORDANT or DISCORDANT across organ systems:
    - **Concordant recovery** (strongly predicts survival): INR improving toward normal (<2.0) AND HE resolving toward grade 0-1 AND lactate normalizing (<2 mmol/L) AND creatinine improving AND ALT declining. When 4-5 markers improve concordantly in APAP, bilirubin may lag behind (rises for days after peak injury, typically reaching ~8-12 mg/dL) -- this does NOT negate the recovery pattern. Isolated vasopressor use with normal lactate in this context likely reflects hemodynamic support needs, NOT refractory shock.
    - **Discordant pattern** (strongly predicts death): Bilirubin escalating to extreme levels (>15 mg/dL), INR only partially improving (remains >2.0), history of prolonged deep coma (grade 3-4 HE for multiple consecutive days), continuous organ support (CVVH/CRRT for entire observation period), documented infections. Even if the current ALFSG-PI snapshot looks favorable, discordant patterns indicate failed hepatic regeneration despite supportive care.
-   - **EXTREME BILIRUBIN OVERRIDE (CONTEXT-DEPENDENT):** When bilirubin rises to >15 mg/dL in APAP ALF (approaching the non-APAP KCC threshold of 17 mg/dL), this is NOT normal lagging -- it typically indicates catastrophic hepatic excretory failure. Typical APAP bilirubin lag reaches ~8-12 mg/dL. HOWEVER, this override is context-dependent: if bilirubin is 15-17 mg/dL AND full concordant recovery is present across ALL other systems (HE resolved to grade 0-1, INR < 1.5, lactate <=2.0 mmol/L, no vasopressors, no mechanical ventilation, no active infections), this may represent a variant of APAP bilirubin lag rather than catastrophic failure -- in this specific combination, do NOT automatically predict death. If bilirubin >15 mg/dL AND any other system shows discordance (HE grade 2+, INR >= 1.5, lactate >2.0, vasopressors, ventilation, infection), predict death. BILIRUBIN LAG IN APAP: When Priority 1C bilirubin lag exception criteria are met (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), rising bilirubin even >15 is excretory lag, NOT catastrophic failure -- predict SURVIVAL.
-   - **PERSISTENT GRADE 4 HE (DURATION-BASED):** APAP recovery typically shows rapid neurological clearing within 2-3 days. Persistent grade 4 HE at Day 4+ in APAP (or Day 5+ in non-APAP) is a critical death signal because 28% of ALF deaths are neurologic (cerebral edema/herniation, Karvellas 2023). The ALFSG-PI treats grades 3 and 4 identically (both "deep"), but grade 4 carries substantially higher mortality risk. Predict death when grade 4 HE persists at Day 4+ UNLESS ALL of these conditions are met: liver function FULLY normalized (INR < 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0 (no severe ARDS). These exception conditions are EXHAUSTIVE: if ALL are met, the exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC (leukocytosis without documented infection is NOT "infection"). If grade 4 HE + PaO2/FiO2 < 2.0, predict death even if liver normalized. The ONLY features that strengthen this override are: lactate >2 mmol/L, bilirubin >5 mg/dL, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features (vasopressors, ventilation, AKI, WBC) apply. NOTE: This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1) -- but NOT at Day 4. At Day 4, this override is the PRIMARY evaluation because Priority 1/1B/1C require Day 5+. Even with INR 1.0, persistent grade 4 HE for 4 days + PaO2/FiO2 < 2.0 = DEATH from neurologic cause, not hepatic. NOTE: Grade 3 HE is NOT grade 4 and does NOT trigger this override.
-   - **AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY, NOT Day 4):** Hepatic encephalopathy is driven by hyperammonemia. At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation for the altered consciousness (elevated creatinine suggesting uremic encephalopathy, heavy sedation for mechanical ventilation, ICU delirium), the coma is likely NON-hepatic in origin. In this specific context, the deep HE does NOT carry the same cerebral edema/herniation risk and should NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50 umol/L) at ANY earlier time point AND liver function has since recovered (INR < 1.5), ammonia is CONFIRMED normal. This is a PHYSIOLOGICAL CERTAINTY. IMPORTANT: Do NOT apply this ammonia context rule before Day 5 -- at Day 3-4, cerebral edema from earlier hyperammonemia can still be progressing even if ammonia has now normalized. At Day 4 specifically, do NOT use low ammonia to reclassify grade 4 HE as non-hepatic.
+   - **EXTREME BILIRUBIN OVERRIDE (CONTEXT-DEPENDENT):** When bilirubin rises to >15 mg/dL in APAP ALF (approaching the non-APAP KCC threshold of 17 mg/dL), this is NOT normal lagging -- it typically indicates catastrophic hepatic excretory failure. Typical APAP bilirubin lag reaches ~8-12 mg/dL. HOWEVER, this override is context-dependent: if bilirubin is 15-17 mg/dL AND full concordant recovery is present across ALL other systems (HE resolved to grade 0-1, INR <= 1.5, lactate <=2.0 mmol/L, no vasopressors, no mechanical ventilation, no active infections), this may represent a variant of APAP bilirubin lag rather than catastrophic failure -- in this specific combination, do NOT automatically predict death. If bilirubin >15 mg/dL AND any other system shows discordance (HE grade 2+, INR >= 1.5, lactate >2.0, vasopressors, ventilation, infection), predict death. BILIRUBIN LAG IN APAP: When Priority 1C bilirubin lag exception criteria are met (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), rising bilirubin even >15 is excretory lag, NOT catastrophic failure -- predict SURVIVAL.
+   - **PERSISTENT GRADE 4 HE (DURATION-BASED):** APAP recovery typically shows rapid neurological clearing within 2-3 days. Persistent grade 4 HE at Day 4+ in APAP (or Day 5+ in non-APAP) is a critical death signal because 28% of ALF deaths are neurologic (cerebral edema/herniation, Karvellas 2023). The ALFSG-PI treats grades 3 and 4 identically (both "deep"), but grade 4 carries substantially higher mortality risk. Predict death when grade 4 HE persists at Day 4+ UNLESS ALL of these conditions are met: liver function FULLY normalized (INR <= 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0 (no severe ARDS). These exception conditions are EXHAUSTIVE: if ALL are met, the exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC (leukocytosis without documented infection is NOT "infection"). If grade 4 HE + PaO2/FiO2 < 1.5, predict death even if liver normalized. The ONLY features that strengthen this override are: lactate >2 mmol/L, bilirubin >5 mg/dL, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features (vasopressors, ventilation, AKI, WBC) apply. NOTE: This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1) -- but NOT at Day 4. At Day 4, this override is the PRIMARY evaluation because Priority 1/1B/1C require Day 5+. Even with INR 1.0, persistent grade 4 HE for 4 days + PaO2/FiO2 < 1.5 = DEATH from neurologic cause, not hepatic. NOTE: Grade 3 HE is NOT grade 4 and does NOT trigger this override.
+   - **AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY, NOT Day 4):** Hepatic encephalopathy is driven by hyperammonemia. At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation for the altered consciousness (elevated creatinine suggesting uremic encephalopathy, heavy sedation for mechanical ventilation, ICU delirium), the coma is likely NON-hepatic in origin. In this specific context, the deep HE does NOT carry the same cerebral edema/herniation risk and should NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50 umol/L) at ANY earlier time point AND liver function has since recovered (INR <= 1.5), ammonia is CONFIRMED normal. This is a PHYSIOLOGICAL CERTAINTY. IMPORTANT: Do NOT apply this ammonia context rule before Day 5 -- at Day 3-4, cerebral edema from earlier hyperammonemia can still be progressing even if ammonia has now normalized. At Day 4 specifically, do NOT use low ammonia to reclassify grade 4 HE as non-hepatic.
    - **CVVH AND CREATININE:** When CVVH/CRRT is active, creatinine may be artificially low because CRRT clears creatinine. Do NOT count low creatinine during active CVVH as evidence of renal recovery. The need for continuous CVVH itself is a marker of persistent organ dysfunction.
    - **EARLY PRESENTATION WITHOUT TRAJECTORY (day 1-2):** When only 1-2 days of data are available, concordant recovery CANNOT be demonstrated because there is no trajectory. Do NOT assume recovery will occur based on ALFSG-PI alone. A high-severity day-1 presentation with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL) is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery, predict death when this severity pattern is present.
    - **EARLY CRITICAL METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, patients may show PARTIAL improvement (e.g., INR declining, creatinine improving) while retaining critical metabolic derangements that predict death. This check evaluates CURRENT VALUES at the time of assessment, NOT trends. When ANY of the following are present at Day 2-3, predict DEATH regardless of other improvements: (a) ammonia >150 umol/L -- this is BINDING: ammonia >150 carries significant ICH risk (Kumar/Bernal) REGARDLESS of whether it is declining from a higher value. An ammonia of 152 declining from 487 is STILL >150 and STILL carries ICH risk. (b) lactate >4 mmol/L AND not declining from prior days (stagnant or rising), (c) bilirubin actively rising (upward TREND through Days 1-3). DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. Rationale: on Day 1, ammonia is often at its presentation peak before NAC and supportive care have had time to reduce it; grade 0-1 HE means the brain is currently tolerating the ammonia load without significant encephalopathy. At Day 2-3, ammonia >150 despite treatment IS binding because treatment has had time to work. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. This is BINDING and FINAL at Day 2-3: do NOT override this warning with partial improvement in INR or creatinine. This is distinct from Day 5+ demonstrated recovery where multi-day concordant improvement IS conclusive.
    - **DEMONSTRATED RECOVERY OVERRIDES INITIAL PROGNOSIS (Day 5+ ONLY, NOT Day 4, NEAR-CONCLUSIVE):** When a patient at Day 5+ shows clear hepatic recovery trajectory -- INR normalized to <1.5 (from initially elevated), ALT declined >80% from peak, AND bilirubin is declining (or already near-normal at <3 mg/dL) -- the liver IS regenerating. STRICT BILIRUBIN: "declining" means the MOST RECENT trend is downward. If the vignette shows bilirubin as "Increasing" (even slightly), it is NOT declining -- even if below the overall peak. A bilirubin rebound (was declining then reversed upward) is NOT declining. At Day 4, do NOT apply this rule -- use persistent grade 4 HE override instead. This is NEAR-CONCLUSIVE evidence of hepatic recovery that OVERRIDES the initial ALFSG-PI score and etiology-based prognosis, regardless of how poor they were. When demonstrated recovery criteria are met, predict SURVIVAL unless there is active clinical deterioration (rising lactate, worsening creatinine, new infections, hemodynamic collapse). The burden of proof shifts: you need evidence of ACTIVE DETERIORATION to predict death, not just poor initial scores.
    - **PARTIAL RECOVERY (Day 5+):** When INR has improved >60% from peak AND the peak INR was >5.0 (indicating severe initial coagulopathy), combined with ALT declined >80% from peak AND at least one of: lactate normalized (<2 mmol/L), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating even though INR has not yet reached <1.5. This "partial recovery" is a strong survival signal because: (1) the magnitude of INR improvement from extreme levels demonstrates active hepatic protein synthesis, (2) ALT decline confirms the necrotic phase has ended, and (3) normalization of other markers confirms the systemic inflammatory response is resolving. Predict SURVIVAL with partial recovery unless ACTIVE DETERIORATION (rising lactate AND worsening creatinine AND new infections -- not isolated single-organ worsening).
-   - **STALE LAB VALUE CAUTION:** Some lab values may be from earlier days (indicated by "from day X"). Values more than 2 days old should be interpreted with significant caution, particularly lactate and ammonia which change rapidly. In a patient showing clear recovery trajectory at day 5+, a stale elevated lactate from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia.
+   - **STALE LAB VALUE CAUTION:** Some lab values may be from earlier days (indicated by "from day X"). Values more than 2 days old should be interpreted with significant caution, particularly lactate and ammonia which change rapidly. In a patient showing clear recovery trajectory at day 5+, a stale elevated lactate from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia. MISSING LACTATE: If lactate was never measured AND no hemodynamic instability (no vasopressors, no acidosis), missing lactate does NOT block recovery pathways. STALE HIGH LACTATE: Lactate >2.0 that is >72h old does NOT block pathways unless corroborated by current vasopressors or acidosis.
    - **APAP-SPECIFIC LACTATE CONTEXT:** In APAP ALF, extreme lactate elevation (even >15-20 mmol/L) may represent Type B lactic acidosis from NAPQI-induced mitochondrial dysfunction (NAD+ depletion), NOT circulatory failure. Key distinguishing features of mitochondrial lactate: (a) hemodynamically STABLE -- no vasopressors or vasopressors not escalating, (b) pH improving or near-normal despite extreme lactate (metabolic compensation), (c) no clinical signs of shock. When extreme lactate coexists with hemodynamic stability and improving pH in APAP, it should be interpreted cautiously -- do NOT automatically equate with tissue hypoperfusion or impending death. The lactate will gradually clear as mitochondrial function recovers. This is specific to APAP (direct hepatocyte mitochondrial toxin) and does NOT apply to other etiologies.
    - **ISOLATED CREATININE WORSENING CONTEXT:** In APAP ALF, acute kidney injury (AKI) often follows a delayed trajectory -- creatinine may continue to WORSEN for 3-5 days after liver recovery begins due to acute tubular necrosis (ATN) from the initial hemodynamic insult. Isolated creatinine worsening (without rising lactate, without hemodynamic collapse, without new infections) is a WEAKER signal of deterioration than multi-organ worsening. When the liver has recovered (or partially recovered) and only creatinine is worsening, this is likely ATN progression that will eventually recover with continued renal support. Do NOT classify isolated creatinine worsening as "active deterioration" when all other markers are stable or improving.
 
@@ -400,13 +1307,13 @@ Follow this systematic approach:
 - **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before evaluating ANY override, check: Is grade 3-4 HE present AND ammonia normal (<50 umol/L) AND creatinine >5 mg/dL? If ALL THREE are true, the encephalopathy is UREMIC, not hepatic. This determination is BINDING and FINAL -- you MUST NOT add extra conditions (CRRT status, ventilation status, neurologic improvement, hepatic normalization are ALL IRRELEVANT to this determination). The physiology is clear: hepatic encephalopathy REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. Uremic encephalopathy does NOT carry cerebral edema/herniation risk and is REVERSIBLE with renal replacement. If HE is uremic, the persistent grade 4 HE death override is NULLIFIED for this patient. Proceed to assess liver trajectory and other organs without the HE penalty. Record: "HE determined to be uremic (ammonia [value], creatinine [value]) -- HE death override nullified."
 - **MANDATORY PRE-CHECK B -- EARLY CRITICAL METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, check CURRENT VALUES (not trends): ammonia >150 umol/L AND/OR lactate >4 not declining AND/OR bilirubin actively rising = predict DEATH. This is BINDING and FINAL. CRITICAL: ammonia >150 means the CURRENT reading is above 150, regardless of whether it is declining from a higher value. Ammonia 152 (down from 487) is STILL >150 and STILL triggers this check. Do NOT rationalize that declining ammonia is "improving" when it remains above the lethal threshold. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. Rationale: on Day 1, ammonia is at its presentation peak before NAC and supportive care have had time to reduce it; grade 0-1 HE means the brain is currently tolerating the ammonia load. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. Record: "Pre-Check B triggered: [values]. Predict death." OR "Day 1 exception applied: ammonia [value] but HE grade [X], no vent, no pressors -- monitoring."
 - **MANDATORY PRE-CHECK C -- MECHANICAL VENTILATION AT DAY 1-3 (BINDING):** At Day 1-3, if the patient is receiving mechanical ventilation, this is a CRITICAL independent mortality predictor that ALFSG-PI does NOT capture. Predict DEATH. Rationale: Mechanical ventilation at Day 1-3 indicates disease severity (profound neurological compromise, aspiration risk, respiratory failure) beyond what laboratory trajectories can assess within 1-3 days. Even if hepatic markers are improving (INR declining, ALT down >70%, bilirubin decreasing), ventilator dependence at Day 1-3 represents a severity phenotype incompatible with spontaneous recovery. A favorable ALFSG-PI (even >80%) is UNRELIABLE when the patient requires ventilation because ALFSG-PI does not model ventilation status. Do NOT let improving liver labs override mechanical ventilation at Day 1-3. Record: "Pre-Check C triggered: mechanical ventilation at Day [X]. Predict death."
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** If INR < 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or near-normal <3 mg/dL), the liver IS regenerating. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette reports bilirubin trend as "Increasing" (e.g., 15.5->15.8 or 5.5->7.2->7.8), bilirubin is NOT declining -- even if the current value is below the overall peak from earlier days. A bilirubin REBOUND (was declining then reverses upward) is NOT declining. If bilirubin is not declining by this strict definition, Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria and do NOT require bilirubin declining). Predict SURVIVAL unless ACTIVE DETERIORATION (rising lactate AND/OR new infections AND/OR hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration (ATN lag). If demonstrated recovery met without active deterioration, predict survival and SKIP death overrides. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 2.0 AND HE is NOT uremic. IMPORTANT: This requires Day 5+. At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override and other death overrides directly.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** If INR improved >60% from peak >5.0, combined with ALT >80% down AND at least one of: lactate <2, HE grade 0-1, or creatinine improving -- liver IS regenerating. CALCULATING INR IMPROVEMENT: percentage = (peak - current) / peak. Example: peak 12.0 to current 2.46 = (12.0 - 2.46)/12.0 = 79.5% -- this MEETS >60%. There is NO requirement for the resulting INR to be below any specific value. This does NOT require bilirubin to be declining (unlike Priority 1). Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL.
-- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check these EXACT criteria: (a) peak INR was 2.0-5.0, (b) ALT declined >80% from peak, (c) lactate normalized <=2 mmol/L OR HE resolved to grade 0-1, (d) bilirubin is lower than the patient's own peak value (declining from THEIR peak, regardless of absolute level). If ALL four criteria are met, the liver IS regenerating despite moderate initial coagulopathy. Predict SURVIVAL unless multi-organ active deterioration. Note: bilirubin 14.2 declining from a peak of 19.5 DOES satisfy "declining from peak" even though the absolute value is still elevated -- the trend matters, not the level. BILIRUBIN LAG EXCEPTION (APAP ONLY): If criteria (a), (b), and (c) are met but bilirubin is STILL RISING (has not peaked yet), Priority 1C IS STILL MET if ALL of: HE grade 0-1, no mechanical ventilation, no vasopressor support, no documented infection, creatinine stable or improving, AND lactate <=2.0 or declining to <=2.0. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND there has been no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate reading satisfies the <=2.0 requirement. Rationale: lactate reflects hepatic and systemic metabolic function; if it was normal and no deterioration occurred since, it remains physiologically valid. In APAP hyperacute ALF, bilirubin excretory lag commonly continues rising for days after synthetic function (INR) has recovered. When ALL other organ systems confirm recovery (no organ support, resolved HE, normal/improving renal function, low lactate), rising bilirubin alone is bilirubin lag, NOT failed regeneration.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** If INR <= 1.5 (from elevated), ALT >80% down from peak, AND bilirubin declining (or near-normal <3 mg/dL), the liver IS regenerating. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette reports bilirubin trend as "Increasing" (e.g., 15.5->15.8 or 5.5->7.2->7.8), bilirubin is NOT declining -- even if the current value is below the overall peak from earlier days. A bilirubin REBOUND (was declining then reverses upward) is NOT declining. If bilirubin is not declining by this strict definition, Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria and do NOT require bilirubin declining). Predict SURVIVAL unless ACTIVE DETERIORATION (rising lactate AND/OR new infections AND/OR hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration (ATN lag). If demonstrated recovery met without active deterioration, predict survival and SKIP death overrides. ONE EXCEPTION: grade 4 HE with PaO2/FiO2 < 1.5 AND HE is NOT uremic. IMPORTANT: This requires Day 5+. At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override and other death overrides directly.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** If INR improved >60% from peak >=5.0, combined with ALT >80% down AND at least one of: lactate <2, HE grade 0-1, or creatinine improving -- liver IS regenerating. CALCULATING INR IMPROVEMENT: percentage = (peak - current) / peak. Example: peak 12.0 to current 2.46 = (12.0 - 2.46)/12.0 = 79.5% -- this MEETS >60%. There is NO requirement for the resulting INR to be below any specific value. This does NOT require bilirubin to be declining (unlike Priority 1). Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL. ENFORCEMENT: If you determine Priority 1B IS met by the data, your decision MUST be Yes. Do NOT override 1B with extrahepatic concerns, death impressions, or bilirubin trends -- 1B has NO bilirubin requirement.
+- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check these EXACT criteria: (a) peak INR was 2.0-5.0, (b) ALT declined >80% from peak, (c) lactate normalized <=2 mmol/L OR HE resolved to grade 0-1, (d) bilirubin is lower than the patient's own peak value (declining from THEIR peak, regardless of absolute level). If ALL four criteria are met, the liver IS regenerating despite moderate initial coagulopathy. Predict SURVIVAL unless multi-organ active deterioration. Note: bilirubin 14.2 declining from a peak of 19.5 DOES satisfy "declining from peak" even though the absolute value is still elevated -- the trend matters, not the level. BILIRUBIN LAG EXCEPTION (APAP ONLY): If criteria (a), (b), and (c) are met but bilirubin is STILL RISING (has not peaked yet), Priority 1C IS STILL MET if ALL of: HE grade 0-2, no mechanical ventilation, no vasopressor support, no documented infection, creatinine stable or improving, AND lactate <=2.0 or declining to <=2.0. VENTILATED APAP EXTENSION: If ventilation is for airway protection (PaO2/FiO2 >= 2.0) AND APAP AND no pressors AND no infection, the no-ventilation condition is relaxed. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND there has been no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate reading satisfies the <=2.0 requirement. Rationale: lactate reflects hepatic and systemic metabolic function; if it was normal and no deterioration occurred since, it remains physiologically valid. In APAP hyperacute ALF, bilirubin excretory lag commonly continues rising for days after synthetic function (INR) has recovered. When ALL other organ systems confirm recovery (no organ support, resolved HE, normal/improving renal function, low lactate), rising bilirubin alone is bilirubin lag, NOT failed regeneration.
 - **PRIORITY 2 -- Only if NO recovery criteria met AND HE is not uremic (per Pre-Check A):**
 - EXTREME BILIRUBIN (BINDING): If bilirubin >15 mg/dL in APAP AND bilirubin is NOT declining, predict DEATH unless ALL of: HE grade 0-1, lactate <=2.0, no mechanical ventilation, no vasopressors, no infection. This exception is EXHAUSTIVE. If ANY discordance exists (HE grade 2+, OR lactate >2.0, OR mechanical ventilation, OR vasopressors, OR infection), predict DEATH. Near-normal INR and declining ALT do NOT override extreme bilirubin with discordance -- the liver's synthetic function can recover while its excretory function fails catastrophically.
-- PERSISTENT GRADE 4 HE (duration-based): If grade 4 HE persists at Day 4+ AND HE is NOT uremic (see Pre-Check A), predict death UNLESS ALL exception conditions met (INR < 1.5, bilirubin < 5, lactate < 2.0, no infections, ALT declining, PaO2/FiO2 >= 2.0). Exception conditions are EXHAUSTIVE -- vasopressors/ventilation/AKI/WBC are NOT disqualifying. Grade 3 HE does NOT trigger this override. DAY 4 CRITICAL: At Day 4, this override is the PRIMARY evaluation criterion because Priority 1/1B/1C are NOT available (Day 5+ only). Even if liver labs are fully normalized (INR 1.0), persistent grade 4 HE for 4 consecutive days + PaO2/FiO2 < 2.0 = predict DEATH. The risk is NEUROLOGIC (cerebral edema/herniation from prolonged grade 4 coma + respiratory failure), not hepatic. 28% of ALF deaths are neurologic. Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- the ammonia context rule is Day 5+ ONLY.
-- AMMONIA CONTEXT (Day 5+ ONLY, NOT Day 4): If grade 3-4 HE + NORMAL ammonia (<50) + alternative explanation (uremia, sedation) at Day 5+, HE override does NOT apply. Stale normal ammonia + recovered liver (INR < 1.5) = CONFIRMED normal (physiological certainty). At Day 4, do NOT use low ammonia to reclassify grade 4 HE as non-hepatic -- cerebral edema from earlier hyperammonemia can still be progressing.
+- PERSISTENT GRADE 4 HE (duration-based): If grade 4 HE persists at Day 4+ AND HE is NOT uremic (see Pre-Check A), predict death UNLESS ALL exception conditions met (INR <= 1.5, bilirubin < 5, lactate < 2.0, no infections, ALT declining, PaO2/FiO2 >= 2.0). Exception conditions are EXHAUSTIVE -- vasopressors/ventilation/AKI/WBC are NOT disqualifying. Grade 3 HE does NOT trigger this override. DAY 4 CRITICAL: At Day 4, this override is the PRIMARY evaluation criterion because Priority 1/1B/1C are NOT available (Day 5+ only). Even if liver labs are fully normalized (INR 1.0), persistent grade 4 HE for 4 consecutive days + PaO2/FiO2 < 1.5 = predict DEATH. The risk is NEUROLOGIC (cerebral edema/herniation from prolonged grade 4 coma + respiratory failure), not hepatic. 28% of ALF deaths are neurologic. Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- the ammonia context rule is Day 5+ ONLY.
+- AMMONIA CONTEXT (Day 5+ ONLY, NOT Day 4): If grade 3-4 HE + NORMAL ammonia (<50) + alternative explanation (uremia, sedation) at Day 5+, HE override does NOT apply. Stale normal ammonia + recovered liver (INR <= 1.5) = CONFIRMED normal (physiological certainty). At Day 4, do NOT use low ammonia to reclassify grade 4 HE as non-hepatic -- cerebral edema from earlier hyperammonemia can still be progressing.
 - CVVH CREATININE: If CVVH is active, do NOT count low creatinine as recovery.
 - APAP LACTATE CONTEXT: In APAP ALF, extreme lactate (even >15-20 mmol/L) with hemodynamic stability (no vasopressors or stable, pH improving/near-normal) represents Type B lactic acidosis from mitochondrial dysfunction. Key distinguishing feature: OSCILLATING lactate (going up AND down) without hemodynamic deterioration = mitochondrial origin. Steadily RISING lactate with vasopressor escalation = true tissue hypoperfusion. Do NOT predict death from mitochondrial lactate.
 
@@ -414,14 +1321,14 @@ Follow this systematic approach:
 - FIRST: Check Pre-Check C result. If Day 1-3 AND patient is on mechanical ventilation: predict DEATH immediately. This is BINDING. Mechanical ventilation at Day 1-3 is an independent mortality predictor not captured by ALFSG-PI.
 - SECOND: Check Pre-Check B result. If Day 2-3 AND ammonia >150 or lactate >4 not declining or bilirubin rising: predict DEATH immediately. This is BINDING. At Day 1, ammonia >150 is NOT binding if HE grade 0-1 + no vent + no pressors (Day 1 exception). A declining ammonia still >150 is STILL lethal at Day 2-3. DAY 1 EXCEPTION ENFORCEMENT: When the Day 1 exception IS active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors), you MUST NOT use ammonia as the primary basis for predicting death. The exception exists because Day 1 ammonia is at presentation peak before NAC treatment, and HE 0-1 confirms brain tolerance. With favorable etiology (APAP) and ALFSG-PI >85% and no organ support at Day 1, ammonia alone does NOT predict death -- base your prediction on ALFSG-PI, etiology, and clinical stability instead.
 - THIRD: Check Pre-Check A result. If HE was determined to be uremic, the HE death override is NULLIFIED. Do NOT let grade 4 HE drive a death prediction when the coma is uremic.
-- FOURTH: At Day 4 with persistent grade 4 HE + PaO2/FiO2 < 2.0 (and HE not uremic): predict DEATH. Priority 1/1B/1C are NOT available at Day 4. Do NOT use low ammonia to dismiss grade 4 HE at Day 4.
+- FOURTH: At Day 4 with persistent grade 4 HE + PaO2/FiO2 < 1.5 (and HE not uremic): predict DEATH. Priority 1/1B/1C are NOT available at Day 4. Do NOT use low ammonia to dismiss grade 4 HE at Day 4.
 - If ANY recovery criteria are met (Priority 1, 1B, or 1C including bilirubin lag exception at Day 5+) AND no multi-organ active deterioration: your decision MUST be "Yes." For Priority 1B specifically: negation requires ALL THREE of rising lactate + worsening creatinine + new infections. Vasopressors, ventilation, rising bilirubin, and isolated creatinine worsening do NOT negate Priority 1B. For Priority 1C: if bilirubin is still rising but ALL other systems confirm recovery (HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), the bilirubin lag exception applies and 1C is met. As a HEPATOLOGIST, liver recovery is YOUR domain of expertise. When the liver is regenerating (INR improving, ALT >80% down, lactate <=2), persistent extrahepatic issues (creatinine, ventilation, pressors) are ICU management problems, not hepatology problems. STRICT BILIRUBIN: If bilirubin trend is "Increasing," Priority 1 specifically is NOT met -- but check Priority 1B and 1C which have DIFFERENT criteria. Priority 1B does NOT require bilirubin declining. Priority 1C has a bilirubin lag exception for APAP when all other systems are favorable.
 - COMBINATION SIGNAL: When BOTH moderate-INR recovery (Priority 1C) AND uremic HE (Pre-Check A) are present, this is a STRONG survival signal -- the liver injury is resolving AND the coma is non-hepatic/reversible.
 - Grade 3 HE is NOT grade 4 -- does NOT trigger the persistent grade 4 HE death override.
-- CRITICAL PEAK INR VERIFICATION: Before claiming ANY recovery criteria are met, verify the peak INR: Priority 1B requires peak INR >5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR is <2.0 (e.g., 1.8), NEITHER Priority 1B NOR 1C can be invoked. In that case, the ONLY recovery pathway is Priority 1 (INR <1.5 + ALT >80% + bilirubin declining). "Bilirubin declining" means the MOST RECENT trend is downward. If the most recent bilirubin trend is even slightly upward (e.g., 15.5->15.8), Priority 1 is NOT met. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria available, regardless of how normalized the INR is or how much ALT has declined.
+- CRITICAL PEAK INR VERIFICATION: Before claiming ANY recovery criteria are met, verify the peak INR: Priority 1B requires peak INR >=5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR is <2.0 (e.g., 1.8), NEITHER Priority 1B NOR 1C can be invoked. In that case, the ONLY recovery pathway is Priority 1 (INR <=1.5 + ALT >80% + bilirubin declining). "Bilirubin declining" means the MOST RECENT trend is downward. If the most recent bilirubin trend is even slightly upward (e.g., 15.5->15.8), Priority 1 is NOT met. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria available, regardless of how normalized the INR is or how much ALT has declined.
 - CRITICAL: When NO Priority 1/1B/1C criteria are formally met (including bilirubin lag exception), you CANNOT predict survival based on informal clinical impression. You MUST evaluate and apply Priority 2 death overrides. If bilirubin >15 AND not declining AND any discordance exists: predict DEATH. Do NOT rationalize that "the liver is recovering" when the formal recovery criteria are not satisfied. Normalized INR + declining ALT do NOT equal "recovery" unless the formal Priority criteria are met.
 - EXTREME BILIRUBIN ENFORCEMENT (BINDING, FINAL CHECK): Before outputting your prediction, if bilirubin is >15 mg/dL in APAP AND not declining AND NO formal recovery criteria (Priority 1/1B/1C) are met, verify: are ALL five exception conditions met (HE 0-1, lactate <=2.0, no mechanical ventilation, no vasopressors, no infection)? If ANY SINGLE exception is NOT met (e.g., ventilation IS present, OR HE IS grade 2+, OR lactate is stale/unknown), you MUST predict DEATH. This is NON-NEGOTIABLE.
-- When Priority 1 criteria ARE met (INR <1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 2.0. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1. These are ICU-manageable complications when the liver is regenerating.
+- When Priority 1 criteria ARE met (INR <=1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 1.5. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1. These are ICU-manageable complications when the liver is regenerating.
 - Only apply death overrides when: (a) Pre-Check B not triggered, AND (b) no recovery criteria are met, AND (c) HE is not uremic, AND (d) the override condition is genuinely present.
 
 # Output Format
@@ -433,10 +1340,25 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    prompt = f"""Clinical Vignette:
-{vignette}
+    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    parsed = parse_vignette(vignette)
+    phenotype_tags = classify_phenotype(parsed)
+    skills_text = select_skills(phenotype_tags)
+    criteria_text = format_criteria_evaluation(vignette)
+    binding_rules_text = format_binding_rules_skill(parsed)
 
-Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
+    prompt_parts = [f"Clinical Vignette:\n{vignette}"]
+    if criteria_text:
+        prompt_parts.append(f"\n{criteria_text}")
+    if skills_text:
+        prompt_parts.append(f"\n{skills_text}")
+    if binding_rules_text:
+        prompt_parts.append(f"\n{binding_rules_text}")
+    prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
+    prompt = "\n".join(prompt_parts)
+
+    if phenotype_tags:
+        logger.info(f"Hepatologist: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
 
     client, deployment_name, client_type = get_azure_openai_client()
     logger.info(f"Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
@@ -558,15 +1480,15 @@ Your reasoning should be grounded in the following peer-reviewed evidence:
 9. **Recovery Concordance Assessment:** Assess whether organ system improvement is CONCORDANT or DISCORDANT:
    - CONCORDANT recovery (all systems improving: HE resolving, lactate normalizing, creatinine improving, INR normalizing, ALT declining) = strong survival signal, even if bilirubin lags (expected in hyperacute ALF, typically reaching ~8-12 mg/dL) and even if vasopressors are still used (with normal lactate)
    - DISCORDANT pattern (some markers improving while bilirubin escalates to extreme levels >15-17 mg/dL, history of prolonged deep coma for multiple days, continuous CVVH throughout observation, documented infections) = liver regeneration is failing despite supportive care, even if current ALFSG-PI snapshot appears favorable
-   - **EXTREME BILIRUBIN OVERRIDE (context-dependent):** Bilirubin >15 mg/dL in APAP ALF is NOT normal lagging (typical lag ~8-12 mg/dL). It typically indicates catastrophic excretory failure. HOWEVER, if bilirubin is 15-17 mg/dL AND full concordant recovery is present across ALL other systems (HE grade 0-1, INR < 1.5, lactate <=2.0, no vasopressors, no ventilation, no infections), this may be a variant of APAP lag -- do NOT automatically predict death. If bilirubin >15 AND any other system shows discordance (HE 2+, lactate >2.0, vent, pressors, infection), predict death. BILIRUBIN LAG: When Priority 1C bilirubin lag exception criteria are met (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), rising bilirubin even >15 is excretory lag, NOT catastrophic failure.
-   - **PERSISTENT GRADE 4 HE (duration-based):** APAP recovery typically clears HE within 2-3 days. Grade 4 HE persisting at Day 4+ in APAP (or Day 5+ in non-APAP) = predict death UNLESS ALL of these conditions are met: liver function FULLY normalized (INR < 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0. These exception conditions are EXHAUSTIVE: if ALL are met, the exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC (leukocytosis without documented infection is NOT "infection"). If grade 4 HE + PaO2/FiO2 < 2.0, predict death even if liver normalized. The ONLY features that strengthen this override are: lactate >2 mmol/L, bilirubin >5 mg/dL, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features apply. NOTE: This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1). NOTE: Grade 3 HE is NOT grade 4 and does NOT trigger this override.
-   - **AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY):** Hepatic encephalopathy is driven by hyperammonemia. At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation for the altered consciousness (elevated creatinine suggesting uremic encephalopathy, heavy sedation for mechanical ventilation, ICU delirium), the coma is likely NON-hepatic in origin. In this specific context, the deep HE does NOT carry the same cerebral edema/herniation risk and should NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50 umol/L) at ANY earlier time point AND liver function has since recovered (INR < 1.5), ammonia is CONFIRMED normal. This is a PHYSIOLOGICAL CERTAINTY: a liver with normal synthetic function clears ammonia efficiently via the urea cycle. You MUST accept stale normal ammonia with recovered liver as current normal ammonia -- do NOT classify it as "unreliable" or "stale." IMPORTANT: Do NOT apply this rule before Day 5.
+   - **EXTREME BILIRUBIN OVERRIDE (context-dependent):** Bilirubin >15 mg/dL in APAP ALF is NOT normal lagging (typical lag ~8-12 mg/dL). It typically indicates catastrophic excretory failure. HOWEVER, if bilirubin is 15-17 mg/dL AND full concordant recovery is present across ALL other systems (HE grade 0-1, INR <= 1.5, lactate <=2.0, no vasopressors, no ventilation, no infections), this may be a variant of APAP lag -- do NOT automatically predict death. If bilirubin >15 AND any other system shows discordance (HE 2+, lactate >2.0, vent, pressors, infection), predict death. BILIRUBIN LAG: When Priority 1C bilirubin lag exception criteria are met (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), rising bilirubin even >15 is excretory lag, NOT catastrophic failure.
+   - **PERSISTENT GRADE 4 HE (duration-based):** APAP recovery typically clears HE within 2-3 days. Grade 4 HE persisting at Day 4+ in APAP (or Day 5+ in non-APAP) = predict death UNLESS ALL of these conditions are met: liver function FULLY normalized (INR <= 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0. These exception conditions are EXHAUSTIVE: if ALL are met, the exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC (leukocytosis without documented infection is NOT "infection"). If grade 4 HE + PaO2/FiO2 < 1.5, predict death even if liver normalized. The ONLY features that strengthen this override are: lactate >2 mmol/L, bilirubin >5 mg/dL, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features apply. NOTE: This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1). NOTE: Grade 3 HE is NOT grade 4 and does NOT trigger this override.
+   - **AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY):** Hepatic encephalopathy is driven by hyperammonemia. At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation for the altered consciousness (elevated creatinine suggesting uremic encephalopathy, heavy sedation for mechanical ventilation, ICU delirium), the coma is likely NON-hepatic in origin. In this specific context, the deep HE does NOT carry the same cerebral edema/herniation risk and should NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50 umol/L) at ANY earlier time point AND liver function has since recovered (INR <= 1.5), ammonia is CONFIRMED normal. This is a PHYSIOLOGICAL CERTAINTY: a liver with normal synthetic function clears ammonia efficiently via the urea cycle. You MUST accept stale normal ammonia with recovered liver as current normal ammonia -- do NOT classify it as "unreliable" or "stale." IMPORTANT: Do NOT apply this rule before Day 5.
    - **CVVH CREATININE ARTIFACT:** When CVVH is active, creatinine is cleared by CRRT and may be artificially low. Do NOT count low creatinine during active CVVH as evidence of renal recovery.
    - **EARLY PRESENTATION WITHOUT TRAJECTORY (day 1-2):** When only 1-2 days of data are available, concordant recovery CANNOT be demonstrated because there is no trajectory. Do NOT assume recovery will occur based on ALFSG-PI alone. A high-severity day-1 presentation with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL) is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery, predict death when this severity pattern is present.
    - **EARLY CRITICAL METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, patients may show PARTIAL improvement (e.g., INR declining, creatinine improving) while retaining critical metabolic derangements that predict death. This check evaluates CURRENT VALUES, NOT trends. When ANY of the following are present at Day 2-3, predict DEATH regardless of other improvements: (a) ammonia >150 umol/L -- this is BINDING: ammonia >150 carries significant ICH risk REGARDLESS of whether it is declining. (b) lactate >4 mmol/L AND not declining, (c) bilirubin actively rising. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. On Day 1, ammonia is at presentation peak before NAC treatment; grade 0-1 HE means the brain is tolerating the load. At Day 2-3, ammonia >150 despite treatment IS binding. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. This is BINDING and FINAL at Day 2-3. This is distinct from Day 5+ demonstrated recovery where multi-day concordant improvement IS conclusive.
    - **DEMONSTRATED RECOVERY OVERRIDES INITIAL PROGNOSIS (Day 5+ ONLY, NOT Day 4, NEAR-CONCLUSIVE):** When a patient at Day 5+ shows clear hepatic recovery trajectory -- INR normalized to <1.5 (from initially elevated), ALT declined >80% from peak, AND bilirubin is declining (or already near-normal <3 mg/dL) -- the liver IS regenerating regardless of initial ALFSG-PI or etiology. STRICT BILIRUBIN: "declining" means the MOST RECENT trend is downward. If the vignette shows bilirubin as "Increasing" (even slightly), it is NOT declining. A bilirubin rebound is NOT declining. At Day 4, do NOT apply this rule. This is NEAR-CONCLUSIVE evidence of hepatic recovery that OVERRIDES the initial ALFSG-PI score. When demonstrated recovery criteria are met, predict SURVIVAL unless there is active clinical deterioration (rising lactate, new infections, hemodynamic collapse). The burden of proof shifts: you need evidence of ACTIVE DETERIORATION to predict death.
    - **PARTIAL RECOVERY (Day 5+):** When INR has improved >60% from peak AND the peak INR was >5.0, combined with ALT >80% down from peak AND at least one of: lactate normalized (<2 mmol/L), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating even though INR has not yet reached <1.5. As a critical care physician, assess whether the remaining organ failures are manageable with ICU support. Predict SURVIVAL with partial recovery unless ACTIVE DETERIORATION (rising lactate AND worsening creatinine AND new infections -- not isolated single-organ worsening).
-   - **STALE LAB VALUE CAUTION:** Some lab values may be from earlier days (indicated by "from day X"). Values more than 2 days old should be interpreted with significant caution, particularly lactate and ammonia which change rapidly. In a patient showing clear recovery at day 5+, a stale elevated lactate from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia.
+   - **STALE LAB VALUE CAUTION:** Some lab values may be from earlier days (indicated by "from day X"). Values more than 2 days old should be interpreted with significant caution, particularly lactate and ammonia which change rapidly. In a patient showing clear recovery at day 5+, a stale elevated lactate from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia. MISSING LACTATE: If lactate was never measured AND no hemodynamic instability (no vasopressors, no acidosis), missing lactate does NOT block recovery pathways. STALE HIGH LACTATE: Lactate >2.0 that is >72h old does NOT block pathways unless corroborated by current vasopressors or acidosis.
    - **APAP-SPECIFIC LACTATE CONTEXT:** In APAP ALF, extreme lactate elevation (even >15-20 mmol/L) may represent Type B lactic acidosis from NAPQI-induced mitochondrial dysfunction (NAD+ depletion), NOT circulatory failure. Distinguishing features: (a) hemodynamically STABLE (no vasopressors or stable), (b) pH improving or near-normal despite extreme lactate, (c) no clinical signs of shock. When extreme lactate coexists with hemodynamic stability and improving pH in APAP, do NOT automatically equate with tissue hypoperfusion. This is specific to APAP and does NOT apply to other etiologies.
    - **ISOLATED CREATININE WORSENING CONTEXT:** In APAP ALF, AKI often follows a delayed trajectory -- creatinine may worsen for 3-5 days after liver recovery begins due to acute tubular necrosis (ATN). Isolated creatinine worsening (without rising lactate, without hemodynamic collapse, without new infections) is a WEAKER deterioration signal than multi-organ worsening. When the liver has recovered and only creatinine is worsening, this is likely ATN progression that will recover with renal support. Do NOT classify isolated creatinine worsening as "active deterioration" when all other markers are stable or improving.
 
@@ -582,7 +1504,7 @@ Follow this systematic approach:
 **Step 2: Evaluate Neurological Status**
 - Assess hepatic encephalopathy grade (0-4 scale)
 - CRITICAL: Grade 4 HE (coma) persisting without improvement over consecutive days is a high-risk signal. APAP patients who recover typically show HE improvement within 2-3 days. Persistent grade 4 HE + rising lactate = predict death even with improving liver markers.
-- AMMONIA CONTEXT (Day 5+ ONLY): At Day 5+, if grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation (uremia, sedation), the altered consciousness is likely non-hepatic. Do NOT apply the persistent HE death override. Before Day 5, normal ammonia does NOT rule out cerebral edema. NOTE: Stale normal ammonia with recovered liver (INR < 1.5) = confirmed normal ammonia.
+- AMMONIA CONTEXT (Day 5+ ONLY): At Day 5+, if grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation (uremia, sedation), the altered consciousness is likely non-hepatic. Do NOT apply the persistent HE death override. Before Day 5, normal ammonia does NOT rule out cerebral edema. NOTE: Stale normal ammonia with recovered liver (INR <= 1.5) = confirmed normal ammonia.
 - Review ammonia levels against evidence-based thresholds (85, 100, 150, 200 umol/L)
 - Determine neurological trajectory and herniation risk
 - Consider that 28% of waitlist deaths are neurologic (cerebral edema/herniation)
@@ -617,13 +1539,13 @@ Follow this systematic approach:
 - **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before evaluating ANY override, check: Is grade 3-4 HE present AND ammonia normal (<50) AND creatinine >5 mg/dL? If ALL THREE true, HE is UREMIC, not hepatic. This is BINDING -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are ALL IRRELEVANT). Hepatic HE REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. Uremic coma does NOT carry cerebral edema risk and is REVERSIBLE with renal replacement. The persistent HE death override is NULLIFIED. Record: "HE is uremic -- HE override nullified."
 - **MANDATORY PRE-CHECK B -- EARLY CRITICAL METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, check CURRENT VALUES (not trends): ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict DEATH. This is BINDING and FINAL. CRITICAL: ammonia >150 means the CURRENT reading exceeds 150, regardless of decline from a higher value. Ammonia 152 (down from 487) STILL triggers this check. Do NOT rationalize declining ammonia as "improving" when it remains above the lethal threshold. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. On Day 1, ammonia is at presentation peak before NAC treatment; grade 0-1 HE means the brain is tolerating the load. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. Record: "Pre-Check B triggered: [values]. Predict death." OR "Day 1 exception applied: ammonia [value] but HE grade [X], no vent, no pressors -- monitoring."
 - **MANDATORY PRE-CHECK C -- MECHANICAL VENTILATION AT DAY 1-3 (BINDING):** At Day 1-3, if the patient is receiving mechanical ventilation, this is a CRITICAL independent mortality predictor that ALFSG-PI does NOT capture. Predict DEATH. Rationale: Mechanical ventilation at Day 1-3 indicates disease severity (profound neurological compromise, aspiration risk, respiratory failure) beyond what laboratory trajectories can assess within 1-3 days. Even if hepatic markers are improving (INR declining, ALT down >70%, bilirubin decreasing), ventilator dependence at Day 1-3 represents a severity phenotype incompatible with spontaneous recovery. A favorable ALFSG-PI (even >80%) is UNRELIABLE when the patient requires ventilation because ALFSG-PI does not model ventilation status. Do NOT let improving liver labs override mechanical ventilation at Day 1-3. Record: "Pre-Check C triggered: mechanical ventilation at Day [X]. Predict death."
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** If INR < 1.5, ALT >80% down, bilirubin declining (or <3 mg/dL), predict SURVIVAL unless active deterioration (rising lactate, new infections, hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette reports bilirubin trend as "Increasing," bilirubin is NOT declining and Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria). ONE EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 2.0. IMPORTANT: At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override directly.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE grade 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: (peak - current) / peak. Example: peak 12 to 2.46 = 79.5% -- MEETS >60%. No requirement for resulting INR to be below any value. This does NOT require bilirubin declining. Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL.
-- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check: (a) peak INR 2.0-5.0, (b) ALT >80% down from peak, (c) lactate <=2 OR HE grade 0-1, (d) bilirubin lower than patient's OWN peak (declining from THEIR peak -- bilirubin 14.2 from peak 19.5 satisfies this). If ALL four met = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration. BILIRUBIN LAG EXCEPTION (APAP ONLY): If (a), (b), (c) met but bilirubin still rising (not peaked yet), Priority 1C IS STILL MET if ALL of: HE 0-1, no vent, no pressors, no infection, creatinine stable/improving, AND lactate <=2.0 or declining to <=2.0. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. In APAP hyperacute ALF, bilirubin excretory lag commonly continues days after synthetic recovery. When ALL other systems confirm recovery, rising bilirubin alone is lag, NOT failed regeneration.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** If INR <= 1.5, ALT >80% down, bilirubin declining (or <3 mg/dL), predict SURVIVAL unless active deterioration (rising lactate, new infections, hemodynamic collapse). Isolated creatinine worsening is NOT active deterioration. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette reports bilirubin trend as "Increasing," bilirubin is NOT declining and Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria). ONE EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 1.5. IMPORTANT: At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override directly.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** INR >60% improved from peak >=5.0 + ALT >80% down + lactate <2 or HE grade 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: (peak - current) / peak. Example: peak 12 to 2.46 = 79.5% -- MEETS >60%. No requirement for resulting INR to be below any value. This does NOT require bilirubin declining. Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL. ENFORCEMENT: If you determine Priority 1B IS met by the data, your decision MUST be Yes. Do NOT override 1B with extrahepatic concerns, death impressions, or bilirubin trends -- 1B has NO bilirubin requirement.
+- **PRIORITY 1C -- MODERATE-INR HEPATIC RECOVERY (Day 5+, BINDING):** Check: (a) peak INR 2.0-5.0, (b) ALT >80% down from peak, (c) lactate <=2 OR HE grade 0-1, (d) bilirubin lower than patient's OWN peak (declining from THEIR peak -- bilirubin 14.2 from peak 19.5 satisfies this). If ALL four met = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration. BILIRUBIN LAG EXCEPTION (APAP ONLY): If (a), (b), (c) met but bilirubin still rising (not peaked yet), Priority 1C IS STILL MET if ALL of: HE 0-2, no vent, no pressors, no infection, creatinine stable/improving, AND lactate <=2.0 or declining to <=2.0. VENTILATED APAP EXTENSION: If ventilation is for airway protection (PaO2/FiO2 >= 2.0) AND APAP AND no pressors AND no infection, the no-ventilation condition is relaxed. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. In APAP hyperacute ALF, bilirubin excretory lag commonly continues days after synthetic recovery. When ALL other systems confirm recovery, rising bilirubin alone is lag, NOT failed regeneration.
 - **COMBINATION SIGNAL:** When BOTH moderate-INR recovery (1C) AND uremic HE (Pre-Check A) apply, this is a STRONG survival signal: the liver is recovering AND the coma is non-hepatic/reversible.
 - **PRIORITY 2 -- Only if NO recovery criteria met AND HE is NOT uremic:**
   (a) EXTREME BILIRUBIN (BINDING): Bilirubin >15 in APAP AND not declining = DEATH unless ALL of: HE 0-1, lactate <=2.0, no vent, no pressors, no infection. ANY discordance (HE 2+, lactate >2.0, vent, pressors, infection) = DEATH. Near-normal INR + declining ALT do NOT override extreme bilirubin with discordance.
-  (b) Persistent non-uremic grade 4 HE at Day 4+ without full exception conditions = death. DAY 4 CRITICAL: At Day 4, this override is the PRIMARY evaluation because Priority 1/1B/1C are NOT available (Day 5+ only). Even with fully normalized liver labs, persistent grade 4 HE for 4 consecutive days + PaO2/FiO2 < 2.0 = DEATH from neurologic cause. Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- ammonia context rule is Day 5+ ONLY.
+  (b) Persistent non-uremic grade 4 HE at Day 4+ without full exception conditions = death. DAY 4 CRITICAL: At Day 4, this override is the PRIMARY evaluation because Priority 1/1B/1C are NOT available (Day 5+ only). Even with fully normalized liver labs, persistent grade 4 HE for 4 consecutive days + PaO2/FiO2 < 1.5 = DEATH from neurologic cause. Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- ammonia context rule is Day 5+ ONLY.
   (c) APAP LACTATE: OSCILLATING extreme lactate with hemodynamic stability = mitochondrial, not circulatory.
   (d) CVVH creatinine artifact.
 - DISCORDANT pattern WITHOUT recovery AND without uremic HE = failed regeneration = death.
@@ -632,13 +1554,13 @@ Follow this systematic approach:
 - FIRST: Apply Pre-Check C result. If Day 1-3 AND patient is on mechanical ventilation: predict DEATH immediately. This is BINDING. Mechanical ventilation at Day 1-3 is an independent mortality predictor not captured by ALFSG-PI.
 - SECOND: Apply Pre-Check B result. If Day 2-3 AND ammonia >150 or lactate >4 not declining or bilirubin rising: predict DEATH immediately. This is BINDING. At Day 1, ammonia >150 is NOT binding if HE grade 0-1 + no vent + no pressors (Day 1 exception). DAY 1 EXCEPTION ENFORCEMENT: When the Day 1 exception IS active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors), you MUST NOT use ammonia as the primary basis for predicting death. Day 1 ammonia is at presentation peak before NAC; HE 0-1 confirms brain tolerance. With favorable etiology (APAP) and ALFSG-PI >85% and no organ support, ammonia alone does NOT predict death at Day 1.
 - THIRD: Apply Pre-Check A result. If HE is uremic, the HE death override is NULLIFIED. Do NOT let uremic grade 4 HE drive a death prediction.
-- FOURTH: At Day 4 with persistent grade 4 HE + PaO2/FiO2 < 2.0 (and HE not uremic): predict DEATH. Priority 1/1B/1C require Day 5+.
+- FOURTH: At Day 4 with persistent grade 4 HE + PaO2/FiO2 < 1.5 (and HE not uremic): predict DEATH. Priority 1/1B/1C require Day 5+.
 - If ANY recovery criteria met (Priority 1/1B/1C including bilirubin lag exception at Day 5+) AND no multi-organ active deterioration: decision MUST be "Yes." For Priority 1B specifically: negation requires ALL THREE of rising lactate + worsening creatinine + new infections. Vasopressors, ventilation, rising bilirubin, and isolated creatinine worsening do NOT negate Priority 1B. For Priority 1C: if bilirubin is still rising but ALL other systems confirm recovery (HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), the bilirubin lag exception applies. Remaining organ failures are ICU-manageable when the liver is recovering. STRICT BILIRUBIN: If bilirubin trend is "Increasing," Priority 1 specifically is NOT met -- but check Priority 1B and 1C (they have DIFFERENT criteria -- 1B has no bilirubin requirement, 1C has a bilirubin lag exception for APAP).
 - COMBINATION: moderate-INR recovery + uremic HE = STRONG survival signal. Predict Yes.
 - CRITICAL: When NO Priority 1/1B/1C criteria are formally met (including bilirubin lag exception), you CANNOT predict survival based on informal clinical impression. You MUST evaluate and apply Priority 2 death overrides. If bilirubin >15 AND not declining AND any discordance: predict DEATH.
-- CRITICAL PEAK INR VERIFICATION: Before claiming ANY recovery criteria are met, verify peak INR: Priority 1B requires peak INR >5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR <2.0, ONLY Priority 1 (INR <1.5 + ALT >80% + bilirubin declining) can apply. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria, regardless of how normalized the INR is.
+- CRITICAL PEAK INR VERIFICATION: Before claiming ANY recovery criteria are met, verify peak INR: Priority 1B requires peak INR >=5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR <2.0, ONLY Priority 1 (INR <=1.5 + ALT >80% + bilirubin declining) can apply. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria, regardless of how normalized the INR is.
 - EXTREME BILIRUBIN ENFORCEMENT (BINDING, FINAL CHECK): Before outputting your prediction, if bilirubin is >15 mg/dL in APAP AND not declining AND NO formal recovery criteria (Priority 1/1B/1C) are met, verify: are ALL five exception conditions met (HE 0-1, lactate <=2.0, no mechanical ventilation, no vasopressors, no infection)? If ANY SINGLE exception is NOT met, you MUST predict DEATH. Normalized INR and declining ALT do NOT override this. This is NON-NEGOTIABLE.
-- When Priority 1 criteria ARE met (INR <1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 2.0. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1.
+- When Priority 1 criteria ARE met (INR <=1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 1.5. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1.
 - Only apply death overrides when: (a) Pre-Check B not triggered, AND (b) no recovery criteria met (1, 1B, or 1C), AND (c) HE is not uremic.
 
 # Output Format
@@ -650,16 +1572,31 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    prompt = f"""Clinical Vignette:
-{vignette}
+    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    parsed = parse_vignette(vignette)
+    phenotype_tags = classify_phenotype(parsed)
+    skills_text = select_skills(phenotype_tags)
+    criteria_text = format_criteria_evaluation(vignette)
+    binding_rules_text = format_binding_rules_skill(parsed)
 
-Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
+    prompt_parts = [f"Clinical Vignette:\n{vignette}"]
+    if criteria_text:
+        prompt_parts.append(f"\n{criteria_text}")
+    if skills_text:
+        prompt_parts.append(f"\n{skills_text}")
+    if binding_rules_text:
+        prompt_parts.append(f"\n{binding_rules_text}")
+    prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
+    prompt = "\n".join(prompt_parts)
+
+    if phenotype_tags:
+        logger.info(f"Critical Care: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
 
     client, deployment_name, client_type = get_azure_openai_client()
     logger.info(f"Calling LLM for Critical Care agent with deployment name: {deployment_name}")
     # Try JSON mode first
     response = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=True, json_schema_model=AgentDecision)
-    
+
     # Check if response is already a parsed Pydantic model (Anthropic native structured outputs)
     if isinstance(response, AgentDecision):
         decision = response
@@ -669,9 +1606,9 @@ Based on this clinical information, predict whether this patient will achieve sp
         if not response_text or not response_text.strip():
             logger.error(f"Empty response from LLM. Client type: {client_type}")
             raise ValueError("Empty response from LLM")
-        
+
         response_text = response_text.strip()
-        
+
         # Try to find JSON object in response
         json_start = response_text.find('{')
         json_end = response_text.rfind('}') + 1
@@ -729,10 +1666,10 @@ Based on this clinical information, predict whether this patient will achieve sp
                 confidence=confidence_val,
                 reasoning=response_text
             )
-        
+
         state['critical_care_output'] = decision
         logger.info(f"Critical Care decision: {decision.decision}")
-        
+
     return state
 
 def transplant_surgeon_agent(state: AgentState) -> AgentState:
@@ -772,16 +1709,16 @@ Your reasoning should be grounded in the following peer-reviewed evidence:
 7. **Post-LT Outcomes:** 1- and 3-year post-LT survival are 91% and 90%, confirming transplantation is effective for appropriate candidates.
 8. **Recovery Concordance Framework:** In APAP/hyperacute ALF, true recovery shows CONCORDANT improvement: INR normalizing toward <2.0, HE resolving toward grade 0-1, lactate normalizing, creatinine improving, ALT declining. When this concordant pattern is present, bilirubin may continue to rise for days (lagging indicator, typically ~8-12 mg/dL) and isolated vasopressor use with normal lactate should not override the recovery signal. Conversely, DISCORDANT patterns indicate failed regeneration.
    **OVERRIDE CONDITIONS (context-dependent):**
-   - EXTREME BILIRUBIN (context-dependent): Bilirubin >15 mg/dL in APAP = typically catastrophic excretory failure (typical lag ~8-12 mg/dL). Predict death UNLESS full concordant recovery across ALL other systems (HE grade 0-1, INR < 1.5, lactate <=2.0, no vasopressors, no ventilation, no infections). If bilirubin >15 AND any other system shows discordance, predict death. IMPORTANT: If Priority 1C bilirubin lag exception applies (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2 in APAP), this is bilirubin excretory lag, NOT catastrophic failure -- predict survival.
-   - PERSISTENT GRADE 4 HE (duration-based): APAP recovery clears HE within 2-3 days. Grade 4 HE persisting at Day 4+ in APAP (or Day 5+ in non-APAP) = predict death UNLESS ALL of these conditions are met: liver function fully normalized (INR < 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0. These exception conditions are EXHAUSTIVE: if ALL met, exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC. The ONLY features that strengthen this override are: lactate >2, bilirubin >5, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features apply. This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1). Grade 3 HE does NOT trigger this override.
-   - AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY): At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation (uremia, sedation, ICU delirium), the coma is likely NON-hepatic. Do NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50) at ANY earlier time AND liver has since recovered (INR < 1.5), ammonia is CONFIRMED normal -- a liver with normal synthetic function physiologically clears ammonia via the urea cycle. Do NOT classify as "unreliable." Do NOT apply before Day 5.
+   - EXTREME BILIRUBIN (context-dependent): Bilirubin >15 mg/dL in APAP = typically catastrophic excretory failure (typical lag ~8-12 mg/dL). Predict death UNLESS full concordant recovery across ALL other systems (HE grade 0-1, INR <= 1.5, lactate <=2.0, no vasopressors, no ventilation, no infections). If bilirubin >15 AND any other system shows discordance, predict death. IMPORTANT: If Priority 1C bilirubin lag exception applies (peak INR 2-5, ALT >80% down, HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2 in APAP), this is bilirubin excretory lag, NOT catastrophic failure -- predict survival.
+   - PERSISTENT GRADE 4 HE (duration-based): APAP recovery clears HE within 2-3 days. Grade 4 HE persisting at Day 4+ in APAP (or Day 5+ in non-APAP) = predict death UNLESS ALL of these conditions are met: liver function fully normalized (INR <= 1.5, bilirubin < 5 mg/dL, lactate < 2.0 mmol/L, no active infections, ALT declining) AND PaO2/FiO2 >= 2.0. These exception conditions are EXHAUSTIVE: if ALL met, exception applies REGARDLESS of vasopressors, ventilation, AKI, or elevated WBC. The ONLY features that strengthen this override are: lactate >2, bilirubin >5, documented infection, INR >1.5, PaO2/FiO2 <2.0. No other features apply. This override is SUPERSEDED by demonstrated recovery at Day 5+ (see Step 8, Priority 1). Grade 3 HE does NOT trigger this override.
+   - AMMONIA CONTEXT FOR HE ASSESSMENT (Day 5+ ONLY): At Day 5+ in APAP (or Day 6+ in non-APAP), when persistent grade 3-4 HE coexists with NORMAL ammonia (<50 umol/L) AND there is an alternative explanation (uremia, sedation, ICU delirium), the coma is likely NON-hepatic. Do NOT trigger the persistent HE death override. STALE AMMONIA RULE (BINDING): If ammonia was normal (<50) at ANY earlier time AND liver has since recovered (INR <= 1.5), ammonia is CONFIRMED normal -- a liver with normal synthetic function physiologically clears ammonia via the urea cycle. Do NOT classify as "unreliable." Do NOT apply before Day 5.
    - Low creatinine during active CVVH is NOT evidence of renal recovery -- CRRT clears creatinine.
    - **EARLY PRESENTATION WITHOUT TRAJECTORY (day 1-2):** When only 1-2 days of data are available, concordant recovery CANNOT be demonstrated because there is no trajectory. Do NOT assume recovery will occur based on ALFSG-PI alone. A high-severity day-1 presentation with deep HE (grade 3+) + mechanical ventilation + severe AKI (creatinine >= 3.4 mg/dL) is a near-KCC phenotype that the ALFSG-PI fundamentally underestimates (it excludes creatinine and ventilation). Without demonstrated recovery, predict death when this severity pattern is present.
    Be especially wary when ALFSG-PI improves at a single time point due to vasopressor cessation and HE improvement, but the overall trajectory shows discordance.
    - **EARLY CRITICAL METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, patients may show PARTIAL improvement while retaining critical metabolic derangements. This check evaluates CURRENT VALUES, NOT trends. When ANY of the following are present at Day 2-3, predict DEATH regardless of other improvements: (a) ammonia >150 umol/L -- this is BINDING: ammonia >150 carries significant ICH risk REGARDLESS of whether it is declining. (b) lactate >4 mmol/L AND not declining, (c) bilirubin actively rising. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. On Day 1, ammonia is at presentation peak before NAC; grade 0-1 HE means brain is tolerating. At Day 2-3, ammonia >150 despite treatment IS binding. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. This is BINDING and FINAL at Day 2-3.
    - **DEMONSTRATED RECOVERY OVERRIDES INITIAL PROGNOSIS (Day 5+ ONLY, NOT Day 4, NEAR-CONCLUSIVE):** When a patient at Day 5+ shows clear hepatic recovery trajectory -- INR normalized to <1.5, ALT declined >80% from peak, AND bilirubin declining (or near-normal <3 mg/dL) -- the liver IS regenerating. STRICT BILIRUBIN: "declining" means the MOST RECENT trend is downward. If the vignette shows bilirubin as "Increasing," it is NOT declining. A bilirubin rebound is NOT declining. At Day 4, do NOT apply this rule. This is NEAR-CONCLUSIVE evidence of hepatic recovery that OVERRIDES the initial ALFSG-PI score. When demonstrated recovery criteria are met, predict SURVIVAL unless active clinical deterioration (rising lactate, new infections, hemodynamic collapse).
-   - **PARTIAL RECOVERY (Day 5+):** When INR has improved >60% from peak AND peak was >5.0, combined with ALT >80% down AND at least one of: lactate normalized (<2), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating even though INR has not yet reached <1.5. >30% of "too sick" patients survive (Dong 2024), especially when liver recovery is clear. Predict SURVIVAL unless ACTIVE DETERIORATION (multi-organ: rising lactate AND worsening creatinine AND new infections).
-   - **STALE LAB VALUE CAUTION:** Lab values from earlier days (indicated by "from day X") more than 2 days old should be interpreted with caution, particularly lactate and ammonia. A stale elevated value from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia.
+   - **PARTIAL RECOVERY (Day 5+):** When INR has improved >60% from peak AND peak was >=5.0, combined with ALT >80% down AND at least one of: lactate normalized (<2), HE resolved to grade 0-1, or creatinine improving -- the liver IS regenerating even though INR has not yet reached <=1.5. >30% of "too sick" patients survive (Dong 2024), especially when liver recovery is clear. Predict SURVIVAL unless ACTIVE DETERIORATION (multi-organ: rising lactate AND worsening creatinine AND new infections).
+   - **STALE LAB VALUE CAUTION:** Lab values from earlier days (indicated by "from day X") more than 2 days old should be interpreted with caution, particularly lactate and ammonia. A stale elevated value from early presentation should NOT override current improving trends. CONVERSELY: if ammonia was NORMAL at an earlier time AND liver function has since improved, the ammonia is almost certainly still normal or lower (recovered liver clears ammonia). Stale normal ammonia with improved liver = reinforced normal ammonia. MISSING LACTATE: If lactate was never measured AND no hemodynamic instability (no vasopressors, no acidosis), missing lactate does NOT block recovery pathways. STALE HIGH LACTATE: Lactate >2.0 that is >72h old does NOT block pathways unless corroborated by current vasopressors or acidosis.
    - **APAP-SPECIFIC LACTATE CONTEXT:** In APAP ALF, extreme lactate elevation may represent Type B lactic acidosis from NAPQI-induced mitochondrial dysfunction, NOT circulatory failure. When extreme lactate coexists with hemodynamic stability (no vasopressors or stable) and improving pH, do NOT automatically equate with tissue hypoperfusion or futility.
    - **ISOLATED CREATININE WORSENING CONTEXT:** In APAP ALF, AKI often worsens for 3-5 days after liver recovery begins (ATN lag). Isolated creatinine worsening (without rising lactate, without hemodynamic collapse, without new infections) is NOT sufficient to predict death when the liver is recovering. Renal failure in ALF is potentially reversible with CRRT support.
 
@@ -831,20 +1768,20 @@ Follow this systematic approach:
 - **MANDATORY PRE-CHECK A -- UREMIC ENCEPHALOPATHY (BINDING, CHECK FIRST):** Before any override, check: grade 3-4 HE AND ammonia <50 AND creatinine >5? If ALL THREE true, HE is UREMIC, not hepatic. This is BINDING -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are IRRELEVANT). Normal ammonia + severe uremia = uremic coma (does NOT carry cerebral edema risk, REVERSIBLE with dialysis). HE death override NULLIFIED. Record: "HE is uremic -- HE override nullified."
 - **MANDATORY PRE-CHECK B -- EARLY METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):** At Day 2-3, check CURRENT VALUES (not trends): ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict DEATH. This is BINDING and FINAL. CRITICAL: ammonia >150 means the CURRENT reading exceeds 150, regardless of decline from a higher value. Ammonia 152 (down from 487) STILL triggers this check. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. On Day 1, ammonia is at presentation peak before NAC treatment. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding. DAY 1 EXCEPTION ENFORCEMENT: When the Day 1 exception IS active, you MUST NOT use ammonia as the primary basis for predicting death. HE 0-1 confirms brain tolerance despite elevated ammonia. With favorable etiology and ALFSG-PI >85% and no organ support, predict SURVIVAL at Day 1. Record: "Pre-Check B triggered: [values]. Predict death." OR "Day 1 exception applied."
 - **MANDATORY PRE-CHECK C -- MECHANICAL VENTILATION AT DAY 1-3 (BINDING):** At Day 1-3, if the patient is receiving mechanical ventilation, this is a CRITICAL independent mortality predictor that ALFSG-PI does NOT capture. Predict DEATH. Rationale: Mechanical ventilation at Day 1-3 indicates disease severity (profound neurological compromise, aspiration risk, respiratory failure) beyond what laboratory trajectories can assess within 1-3 days. Even if hepatic markers are improving (INR declining, ALT down >70%, bilirubin decreasing), ventilator dependence at Day 1-3 represents a severity phenotype incompatible with spontaneous recovery. A favorable ALFSG-PI (even >80%) is UNRELIABLE when the patient requires ventilation because ALFSG-PI does not model ventilation status. Do NOT let improving liver labs override mechanical ventilation at Day 1-3. Record: "Pre-Check C triggered: mechanical ventilation at Day [X]. Predict death."
-- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** INR < 1.5 + ALT >80% down + bilirubin declining (or <3) = liver regenerating. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette shows bilirubin trend as "Increasing," bilirubin is NOT declining and Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria). Predict SURVIVAL unless active deterioration. Isolated creatinine worsening NOT sufficient. >30% of "too sick" survive (Dong 2024). EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 2.0. At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override directly.
-- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: (peak - current) / peak. Example: peak 12 to 2.46 = 79.5% -- MEETS >60%. No requirement for resulting INR to be below any value. This does NOT require bilirubin declining. Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL.
-- **PRIORITY 1C -- MODERATE-INR RECOVERY (Day 5+, BINDING):** Peak INR 2.0-5.0 + ALT >80% down + lactate <=2 OR HE 0-1 + bilirubin declining from patient's OWN peak (any decline, regardless of absolute level) = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration. BILIRUBIN LAG EXCEPTION (APAP ONLY): If first three criteria met but bilirubin still rising, Priority 1C IS STILL MET if ALL of: HE 0-1, no vent, no pressors, no infection, creatinine stable/improving, AND lactate <=2.0 or declining to <=2.0. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND no subsequent metabolic deterioration (no vasopressors, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. Rising bilirubin with full concordant extrahepatic recovery = bilirubin excretory lag in APAP, NOT failed regeneration.
+- **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4):** INR <= 1.5 + ALT >80% down + bilirubin declining (or <3) = liver regenerating. STRICT BILIRUBIN CHECK (BINDING): "bilirubin declining" means the MOST RECENT trend is downward. If the vignette shows bilirubin trend as "Increasing," bilirubin is NOT declining and Priority 1 is NOT met -- check Priority 1B and 1C next (they have DIFFERENT criteria). Predict SURVIVAL unless active deterioration. Isolated creatinine worsening NOT sufficient. >30% of "too sick" survive (Dong 2024). EXCEPTION: non-uremic grade 4 HE with PaO2/FiO2 < 1.5. At Day 4, do NOT apply Priority 1/1B/1C -- evaluate persistent grade 4 HE override directly.
+- **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):** INR >60% improved from peak >=5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: (peak - current) / peak. Example: peak 12 to 2.46 = 79.5% -- MEETS >60%. No requirement for resulting INR to be below any value. This does NOT require bilirubin declining. Rising bilirubin does NOT negate Priority 1B. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3 mg/dL) is ATN lag in APAP, NOT multi-organ deterioration. If Priority 1B criteria are met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL. ENFORCEMENT: If you determine Priority 1B IS met by the data, your decision MUST be Yes. Do NOT override 1B with extrahepatic concerns, death impressions, or bilirubin trends -- 1B has NO bilirubin requirement.
+- **PRIORITY 1C -- MODERATE-INR RECOVERY (Day 5+, BINDING):** Peak INR 2.0-5.0 + ALT >80% down + lactate <=2 OR HE 0-1 + bilirubin declining from patient's OWN peak (any decline, regardless of absolute level) = liver regenerating. Predict SURVIVAL unless multi-organ active deterioration. BILIRUBIN LAG EXCEPTION (APAP ONLY): If first three criteria met but bilirubin still rising, Priority 1C IS STILL MET if ALL of: HE 0-2, no vent, no pressors, no infection, creatinine stable/improving, AND lactate <=2.0 or declining to <=2.0. VENTILATED APAP EXTENSION: If ventilation is for airway protection (PaO2/FiO2 >= 2.0) AND APAP AND no pressors AND no infection, the no-ventilation condition is relaxed. STALE LACTATE PROVISION: If the most recent available lactate was <=2.0 (even if from a prior day) AND no subsequent metabolic deterioration (no vasopressors, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. Rising bilirubin with full concordant extrahepatic recovery = bilirubin excretory lag in APAP, NOT failed regeneration.
 - **COMBINATION:** Moderate-INR recovery + uremic HE = STRONG survival signal. Liver recovering AND coma reversible.
 - **PRIORITY 2 -- Only if NO recovery met AND HE NOT uremic:**
 - EXTREME BILIRUBIN (BINDING): Bilirubin >15 in APAP AND not declining = DEATH unless ALL of: HE 0-1, lactate <=2.0, no vent, no pressors, no infection. ANY discordance (HE 2+, lactate >2.0, vent, pressors, infection) = DEATH. Near-normal INR + declining ALT do NOT override extreme bilirubin with discordance.
-- Non-uremic persistent grade 4 HE at Day 4+ without exception conditions = death. DAY 4: This is the PRIMARY evaluation at Day 4 because Priority 1/1B/1C require Day 5+. Even with normalized liver labs, persistent grade 4 HE + PaO2/FiO2 < 2.0 at Day 4 = DEATH (neurologic risk). Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- ammonia context rule is Day 5+ ONLY.
+- Non-uremic persistent grade 4 HE at Day 4+ without exception conditions = death. DAY 4: This is the PRIMARY evaluation at Day 4 because Priority 1/1B/1C require Day 5+. Even with normalized liver labs, persistent grade 4 HE + PaO2/FiO2 < 1.5 at Day 4 = DEATH (neurologic risk). Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- ammonia context rule is Day 5+ ONLY.
 - APAP LACTATE: OSCILLATING extreme lactate with hemodynamic stability = mitochondrial.
 - Discordant WITHOUT recovery AND without uremic HE = death.
 - PRE-CHECK C (BINDING): At Day 1-3, if the patient is on mechanical ventilation, predict DEATH immediately. This is an independent mortality predictor not captured by ALFSG-PI. Improving liver labs do NOT override ventilator dependence at Day 1-3.
 - BINDING: When any recovery criteria met at Day 5+ (including Priority 1C bilirubin lag exception), decision MUST be "Yes" unless SPECIFIC MULTI-ORGAN worsening. For Priority 1B specifically: negation requires ALL THREE of rising lactate + worsening creatinine + new infections. Vasopressors, ventilation, rising bilirubin, and isolated creatinine worsening do NOT negate Priority 1B. For Priority 1C: bilirubin lag exception applies in APAP when bilirubin is rising but ALL other systems confirm recovery (HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2). STRICT BILIRUBIN: If bilirubin trend is "Increasing," Priority 1 specifically is NOT met -- but Priority 1B has no bilirubin requirement and Priority 1C has a bilirubin lag exception. CRITICAL: When NO Priority 1/1B/1C criteria are formally met (including bilirubin lag exception), you MUST evaluate and apply Priority 2 death overrides. Do NOT predict survival based on informal recovery impression.
 - EXTREME BILIRUBIN ENFORCEMENT (BINDING, FINAL CHECK): Before outputting your prediction, if bilirubin is >15 mg/dL in APAP AND not declining AND NO formal recovery criteria (Priority 1/1B/1C) are met, verify: are ALL five exception conditions met (HE 0-1, lactate <=2.0, no mechanical ventilation, no vasopressors, no infection)? If ANY SINGLE exception is NOT met (e.g., ventilation IS present, OR HE IS grade 2+, OR lactate is stale/unknown), you MUST predict DEATH. Normalized INR and declining ALT do NOT override this. This is NON-NEGOTIABLE.
-- CRITICAL PEAK INR VERIFICATION: Before claiming recovery, verify peak INR: Priority 1B requires peak INR >5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR <2.0, ONLY Priority 1 (INR <1.5 + ALT >80% + bilirubin declining) can apply. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria.
-- When Priority 1 criteria ARE met (INR <1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 2.0. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1.
+- CRITICAL PEAK INR VERIFICATION: Before claiming recovery, verify peak INR: Priority 1B requires peak INR >=5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR <2.0, ONLY Priority 1 (INR <=1.5 + ALT >80% + bilirubin declining) can apply. A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria.
+- When Priority 1 criteria ARE met (INR <=1.5, ALT >80% down, bilirubin declining at Day 5+): predict SURVIVAL. The ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 1.5. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone are NOT grounds to override Priority 1.
 
 # Output Format
 You must strictly adhere to this JSON format:
@@ -855,10 +1792,25 @@ You must strictly adhere to this JSON format:
 }
 """
 
-    prompt = f"""Clinical Vignette:
-{vignette}
+    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    parsed = parse_vignette(vignette)
+    phenotype_tags = classify_phenotype(parsed)
+    skills_text = select_skills(phenotype_tags)
+    criteria_text = format_criteria_evaluation(vignette)
+    binding_rules_text = format_binding_rules_skill(parsed)
 
-Based on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days."""
+    prompt_parts = [f"Clinical Vignette:\n{vignette}"]
+    if criteria_text:
+        prompt_parts.append(f"\n{criteria_text}")
+    if skills_text:
+        prompt_parts.append(f"\n{skills_text}")
+    if binding_rules_text:
+        prompt_parts.append(f"\n{binding_rules_text}")
+    prompt_parts.append("\nBased on this clinical information, predict whether this patient will achieve spontaneous survival at 21 days.")
+    prompt = "\n".join(prompt_parts)
+
+    if phenotype_tags:
+        logger.info(f"Transplant Surgeon: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
 
     client, deployment_name, client_type = get_azure_openai_client()
     logger.info(f"Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")    
@@ -1014,39 +1966,64 @@ The strongest predictor of ALF outcome is whether organ system improvement is CO
 Before evaluating ANY override, extract from specialist reasoning: Is grade 3-4 HE present AND ammonia normal (<50) AND creatinine >5 mg/dL? If ALL THREE true, the HE is UREMIC, not hepatic. This is BINDING and FINAL -- do NOT add extra conditions (CRRT status, ventilation, neurologic improvement, hepatic normalization are ALL IRRELEVANT). Hepatic HE REQUIRES hyperammonemia; normal ammonia + severe uremia = uremic coma. The persistent HE death override is NULLIFIED for this patient. Record: "HE is uremic -- HE override nullified."
 
 **MANDATORY PRE-CHECK B -- EARLY METABOLIC WARNING (Day 2-3 BINDING; Day 1 CONDITIONAL):**
-At Day 2-3, check CURRENT VALUES (not trends): ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict DEATH. This is BINDING and FINAL. CRITICAL: ammonia >150 means the CURRENT reading exceeds 150, regardless of decline from a higher value. Ammonia 152 (down from 487) is STILL >150 and STILL triggers this check. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. Rationale: on Day 1, ammonia is at presentation peak before NAC treatment; grade 0-1 HE means the brain is tolerating the ammonia load. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding.
+At Day 2-3, check CURRENT VALUES (not trends): ammonia >150 AND/OR lactate >4 not declining AND/OR bilirubin rising = predict DEATH. This is BINDING and FINAL. BILIRUBIN RISING MAGNITUDE REQUIREMENT: For the "bilirubin rising" trigger to fire, the rise must be clinically significant: cumulative rise >2 mg/dL AND current bilirubin >5 mg/dL. A trivial rise from low baseline (e.g., 1.6->4.5, bilirubin still <5) does NOT trigger Pre-Check B -- this represents early-phase bilirubin appearance, not metabolic failure. Also: at Day 2, the bilirubin rising exception conditions (INR >50% improved, etc.) are structurally inaccessible because INR has not had time to recover -- if Pre-Check B fires on bilirubin rising alone at Day 2 and the magnitude requirement is not met, Pre-Check B does NOT apply. CRITICAL: ammonia >150 means the CURRENT reading exceeds 150, regardless of decline from a higher value. Ammonia 152 (down from 487) is STILL >150 and STILL triggers this check. DAY 1 EXCEPTION: At Day 1 ONLY, ammonia >150 is NOT binding if ALL of: (a) HE grade 0-1, (b) no mechanical ventilation, (c) no vasopressor support. Rationale: on Day 1, ammonia is at presentation peak before NAC treatment; grade 0-1 HE means the brain is tolerating the ammonia load. If Day 1 AND (HE grade 2+ OR ventilation OR vasopressors), ammonia >150 IS still binding.
 BILIRUBIN RISING EXCEPTION (Day 2-3 ONLY): If "bilirubin rising" is the ONLY Pre-Check B trigger (i.e., ammonia <=150 or NOT REPORTED, AND lactate <=4 or declining) AND ALL of the following are true: (a) INR has improved >50% from peak, (b) HE grade 0-1, (c) no mechanical ventilation, (d) no vasopressor support, (e) lactate <=2.0 (including stale lactate from a prior day via the Stale Lactate Provision -- a Day 2 lactate of 2.0 IS valid for Day 3 evaluation; also note: 2.0 EQUALS <=2.0, this condition IS satisfied) -- then Pre-Check B is WAIVED. There is NO "current-value rule," NO "same-day requirement," and NO requirement that lactate be from the CURRENT evaluation day. The Stale Lactate Provision explicitly covers prior-day values. If lactate was 2.0 on Day 2, it IS <=2.0 for Day 3 evaluation -- do NOT reject it by claiming it is "not a current Day 3 value." MISSING AMMONIA RULE: If ammonia is NOT reported in the clinical data, it is assumed to NOT trigger Pre-Check B (i.e., treated as <=150). If ammonia were dangerously elevated, it would be reported. Absence of ammonia data means ammonia is not a concern and does NOT block the bilirubin rising exception. Follow the weighted vote instead. Rationale: In APAP hyperacute ALF, bilirubin excretory lag commonly causes rising bilirubin at Day 2-3 even as INR dramatically recovers (e.g., INR 10.7 to 1.8 = 83% improvement). When INR recovery demonstrates active liver regeneration AND no organ support is needed AND HE is minimal, isolated rising bilirubin is excretory lag, NOT metabolic failure. Predicting death solely on rising bilirubin when all other markers confirm recovery is a false positive.
 WORKED EXAMPLE (BILIRUBIN RISING EXCEPTION): Day 3, APAP, INR 10.7->1.8 (83% improvement, >50%), bilirubin 7.6->9.5 (rising), ammonia not reported (MISSING AMMONIA RULE: treated as <=150), lactate 2.0 from Day 2 (Stale Lactate Provision: Day 2 lactate IS valid for Day 3; there is NO "current-value rule" requiring Day 3 lactate; 2.0 = <=2.0), HE grade 1 (0-1), no vent, no pressors, ALFSG-PI 86.5%. Step 1: Only Pre-Check B trigger is "bilirubin rising" (ammonia not reported = <=150, lactate <=4). Step 2: INR 83% improvement >50%. Step 3: HE grade 1, no vent, no pressors, lactate 2.0 via stale provision. Step 4: ALL exception conditions met -- Pre-Check B is WAIVED. Step 5: All 3 specialists predict Yes. Weighted vote = SURVIVAL. If you are tempted to reject the Day 2 lactate because it is "not a current Day 3 value" -- STOP. The Stale Lactate Provision explicitly makes prior-day lactate valid. There is no same-day requirement.
 
 **MANDATORY PRE-CHECK C -- MECHANICAL VENTILATION AT DAY 1-3 (BINDING):**
 At Day 1-3, if the patient is receiving mechanical ventilation, predict DEATH. This is BINDING and FINAL. Mechanical ventilation at Day 1-3 is a CRITICAL independent mortality predictor that ALFSG-PI does NOT capture. Even if specialists vote Yes based on improving liver labs (INR declining, ALT down), ventilator dependence at Day 1-3 represents disease severity incompatible with spontaneous recovery. This override takes priority over the weighted vote at Day 1-3.
+PRE-CHECK C EXCEPTIONS (NARROW): Pre-Check C does NOT apply when ALL of the following are met:
+(A) HYPERACUTE APAP RECOVERY EXCEPTION: APAP etiology AND Day 2-3 AND INR improved >75% from peak AND ALT declined >90% from peak AND bilirubin declining AND no vasopressors AND PaO2/FiO2 >= 1.9. Rationale: hyperacute APAP recovery can be so rapid that ventilation is from early intubation for airway protection during initial HE, not ongoing respiratory failure. The dramatic lab recovery proves the liver has recovered.
+(B) NON-APAP PRESERVED FUNCTION EXCEPTION: Non-APAP etiology AND INR <=1.5 AND bilirubin <=3.0 AND ALFSG-PI >=80% AND no vasopressors AND no documented infection AND HE improving (e.g., grade 3->1). Rationale: patients with preserved liver function and no organ support may have been intubated for brief airway protection during transient HE.
+If NEITHER exception applies, Pre-Check C fires as normal.
 
 **DAY 4 PERSISTENT GRADE 4 HE RULE (BINDING):**
-At Day 4, Priority 1/1B/1C recovery criteria are NOT available (they require Day 5+). If persistent grade 4 HE AND PaO2/FiO2 < 2.0 AND HE is NOT uremic at Day 4: predict DEATH regardless of liver recovery metrics. Even with INR 1.0 and fully recovered liver, 4 consecutive days of grade 4 coma + respiratory failure carries independent neurologic death risk (cerebral edema/herniation -- 28% of ALF deaths are neurologic). Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- the ammonia context rule is Day 5+ ONLY. The Hepatologist may predict survival based on liver recovery, but liver recovery does NOT prevent neurologic death.
+At Day 4, Priority 1/1B/1C recovery criteria are NOT available (they require Day 5+). If persistent grade 4 HE AND PaO2/FiO2 < 1.5 AND HE is NOT uremic at Day 4: predict DEATH regardless of liver recovery metrics. Even with INR 1.0 and fully recovered liver, 4 consecutive days of grade 4 coma + respiratory failure carries independent neurologic death risk (cerebral edema/herniation -- 28% of ALF deaths are neurologic). Do NOT use low ammonia to dismiss grade 4 HE at Day 4 -- the ammonia context rule is Day 5+ ONLY. The Hepatologist may predict survival based on liver recovery, but liver recovery does NOT prevent neurologic death.
 
 **PRIORITY 1 -- DEMONSTRATED RECOVERY (Day 5+ ONLY, NOT Day 4, BINDING):**
-If ALL THREE are met: (a) INR < 1.5, (b) ALT >80% down from peak, (c) bilirubin declining (or <3 mg/dL) -- then Priority 1 IS MET. Predict SURVIVAL. THESE THREE CRITERIA ARE EXHAUSTIVE -- no additional "systemic recovery markers," "concordance," or "supportive evidence" is required. When INR <1.5 AND ALT >80% down AND bilirubin declining, the liver IS regenerating regardless of other organ status.
-STRICT BILIRUBIN CHECK: "bilirubin declining" means the MOST RECENT trend is downward. Example: 14.3->10.5 IS declining. Example: 15.5->15.8 is NOT declining. Example: 5.5->7.2->7.8 is NOT declining (rising). A bilirubin REBOUND is NOT declining. If bilirubin is not declining, Priority 1 is NOT met -- even if INR <1.5 and ALT >80% down, ALL THREE criteria must be satisfied. When bilirubin is rising, Priority 1 FAILS and you MUST check Priority 1B, 1C, and then Rules 5B and 6. Do NOT treat "near-normal INR + declining ALT + rising bilirubin" as informal recovery -- without meeting ALL THREE Priority 1 criteria, you have NO formal recovery, and death overrides (Rule 5B for non-uremic grade 4 HE, Rule 6 for extreme bilirubin) MUST be evaluated.
+If ALL THREE are met: (a) INR <= 1.5, (b) ALT >80% down from peak, (c) bilirubin declining (or <3 mg/dL) -- then Priority 1 IS MET. Predict SURVIVAL. THESE THREE CRITERIA ARE EXHAUSTIVE -- no additional "systemic recovery markers," "concordance," or "supportive evidence" is required. When INR <1.5 AND ALT >80% down AND bilirubin declining, the liver IS regenerating regardless of other organ status.
+STRICT BILIRUBIN CHECK: "bilirubin declining" means the MOST RECENT trend is downward. MICRO-RISE TOLERANCE: A bilirubin increase of <=0.5 mg/dL between consecutive measurements is treated as "stable" (not "rising") for ALL rules (Priority 1, Pre-Check B, Extreme Bilirubin). Example: 6.0->6.1 = stable. Example: 6.0->6.6 = rising. Example: 14.3->10.5 IS declining. Example: 15.5->15.8 = 0.3 rise, within <=0.5 tolerance = treated as STABLE (counts as "not rising" for Pre-Check B and Extreme Bilirubin, counts as "declining or stable" for Priority 1). Example: 15.5->16.1 = 0.6 rise, exceeds 0.5 tolerance = RISING. Example: 5.5->7.2->7.8 is RISING (5.5->7.2 = 1.7, clearly rising). A bilirubin REBOUND is NOT declining. If bilirubin is not declining, Priority 1 is NOT met -- even if INR <1.5 and ALT >80% down, ALL THREE criteria must be satisfied. When bilirubin is rising, Priority 1 FAILS and you MUST check Priority 1B, 1C, and then Rules 5B and 6. Do NOT treat "near-normal INR + declining ALT + rising bilirubin" as informal recovery -- without meeting ALL THREE Priority 1 criteria, you have NO formal recovery, and death overrides (Rule 5B for non-uremic grade 4 HE, Rule 6 for extreme bilirubin) MUST be evaluated.
 MANDATORY SEQUENCE AFTER RECOVERY CRITERIA FAIL: If you check Priorities 1, 1B, and 1C and NONE are met, you MUST proceed to check Rules 5B (non-uremic grade 4 HE) and 6 (Extreme Bilirubin) BEFORE making any prediction. Do NOT skip to the weighted vote. Do NOT engage in free-form clinical reasoning about "favorable trajectory" or "dominant physiologic recovery." When formal recovery criteria are not met, favorable lab trends (improving INR, declining ALT) do NOT substitute for formal criteria. The ONLY valid path when all recovery criteria fail is: check Rule 5B, check Rule 6, and if neither fires, THEN follow the weighted vote.
-NEGATION: ONLY non-uremic grade 4 HE (specifically grade 4, NOT grade 3) with PaO2/FiO2 < 2.0 can negate Priority 1. Mechanical ventilation alone, grade 3 HE alone, severe AKI (even creatinine >5), CVVH, and elevated non-declining creatinine do NOT negate Priority 1. These are ICU complications manageable when the liver is regenerating.
+HE TRAJECTORY AS RECOVERY SIGNAL: HE improving from grade 3-4 to grade 0-2 between earlier days and assessment day is a POSITIVE recovery signal. When combined with improving liver labs, it strengthens the case for survival. Conversely, STATIC grade 4 HE across all days is concerning. For all recovery priorities, HE trajectory improvement (not just current grade) should be considered.
+NEGATION: ONLY non-uremic grade 4 HE (specifically grade 4, NOT grade 3) with PaO2/FiO2 < 1.5 can negate Priority 1. Mechanical ventilation alone, grade 3 HE alone, severe AKI (even creatinine >5), CVVH, and elevated non-declining creatinine do NOT negate Priority 1. These are ICU complications manageable when the liver is regenerating.
 WORKED EXAMPLE: Day 7 patient with INR 1.33, ALT down 95% from peak, bilirubin declining (14.3->10.5). Also: mechanical ventilation, grade 3 HE, creatinine 7.6, CVVH. Priority 1 IS MET: (a) INR 1.33 <1.5 = YES, (b) ALT 95% >80% = YES, (c) bilirubin 14.3->10.5 = declining = YES. Predict SURVIVAL. Ventilation + grade 3 HE + creatinine 7.6 + CVVH do NOT negate. No "systemic recovery markers" or "concordance" needed beyond these three.
 INDEPENDENT ASSESSMENT: Even if ALL specialists predict "No," review their clinical data for ALL recovery criteria (Priority 1, 1B, AND 1C). A unanimous "No" does NOT override clinical reality. If Priority 1 is met by the data, predict SURVIVAL regardless of specialist votes.
 
 **PRIORITY 1B -- PARTIAL RECOVERY (Day 5+, NO BILIRUBIN REQUIREMENT, BINDING):**
-INR >60% improved from peak >5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: percentage = (peak_INR - current_INR) / peak_INR. Example: peak 12.0 to current 2.46 = (12.0 - 2.46)/12.0 = 79.5% -- this MEETS >60%. There is NO requirement for the resulting INR to be below any specific value (2.0, 1.5, etc.) -- only that the improvement percentage exceeds 60%. This does NOT require bilirubin to be declining (unlike Priority 1). >30% "too sick" survive. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. CRITICAL: Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3) is ATN lag in APAP, NOT multi-organ deterioration. Rising bilirubin does NOT negate 1B (no bilirubin requirement). If Priority 1B is met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL regardless of how the specialists voted.
+INR >60% improved from peak >=5.0 + ALT >80% down + lactate <2 or HE 0-1 or creatinine improving = liver regenerating. CALCULATING INR IMPROVEMENT: percentage = (peak_INR - current_INR) / peak_INR. Example: peak 12.0 to current 2.46 = (12.0 - 2.46)/12.0 = 79.5% -- this MEETS >60%. There is NO requirement for the resulting INR to be below any specific value (2.0, 1.5, etc.) -- only that the improvement percentage exceeds 60%. This does NOT require bilirubin to be declining (unlike Priority 1). >30% "too sick" survive. Predict SURVIVAL unless ALL THREE present: rising lactate AND worsening creatinine AND new infections. CRITICAL: Vasopressors and mechanical ventilation alone do NOT negate Priority 1B when lactate is normal (<2). Isolated creatinine worsening (even severe, e.g., 6.3) is ATN lag in APAP, NOT multi-organ deterioration. Rising bilirubin does NOT negate 1B (no bilirubin requirement). If Priority 1B is met and ALL THREE negation criteria are NOT present, you MUST predict SURVIVAL regardless of how the specialists voted.
+P1B EXTENDED THRESHOLD: When ALT decline is >90% from peak (exceptionally strong hepatocellular recovery), the INR improvement threshold is relaxed to >=55% (from >60%). The strong ALT recovery compensates for slightly lower INR improvement. This does NOT apply when ALT decline is <=90%.
+CREATININE IMPROVING DEFINITION (applies to all Priorities): "creatinine improving" means most recent value is lower than the immediately preceding value, OR creatinine is at normal baseline (<1.2 mg/dL). Non-monotonic trajectories where the LATEST direction is downward count (e.g., 1.1->1.7->1.3 = improving). ATN CONSISTENCY: In APAP, isolated creatinine worsening is ATN lag in BOTH 1B and 1C contexts -- it does NOT satisfy "worsening creatinine" for the 1B triple negation, and it does NOT block the 1C lag exception creatinine condition.
 
 **PRIORITY 1C -- MODERATE-INR RECOVERY (Day 5+, BINDING):**
 Peak INR 2.0-5.0 + ALT >80% down + lactate <=2 OR HE 0-1 + bilirubin declining from patient's OWN peak (any decline, regardless of absolute level -- e.g., 19.5 to 14.2 satisfies "declining") = liver regenerating. Predict SURVIVAL. The ONLY negation for 1C is rising lactate AND worsening creatinine AND new infections (all three required). Isolated creatinine worsening (even severe), mechanical ventilation, or persistent HE (especially if uremic) do NOT negate 1C.
-BILIRUBIN LAG EXCEPTION (APAP ONLY, BINDING): If the first three criteria (peak INR 2-5, ALT >80% down, lactate <=2 or HE 0-1) are met but bilirubin is STILL RISING (has not peaked yet), Priority 1C IS STILL MET if ALL of: HE grade 0-1, no mechanical ventilation, no vasopressor support, no documented infection, creatinine stable or improving (MOST RECENT trend -- a creatinine that went up then came down, e.g. 3.9->5.4->3.7, IS "improving" because the latest direction is downward; non-monotonic trajectories that are currently declining count as improving), AND lactate <=2.0 or declining to <=2.0. STALE LACTATE PROVISION (BINDING): If the most recent available lactate was <=2.0 (even if from a prior day, e.g., Day 3 lactate of 2.0 when evaluating Day 6) AND there has been no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. Do NOT reject stale lactate by saying "cannot be verified," "not contemporaneous," "cannot safely assume," or any similar hedging language -- the provision explicitly covers non-contemporaneous lactate values. Rising bilirubin does NOT invalidate stale lactate; bilirubin is an excretory marker, NOT a metabolic marker, and its trend is irrelevant to lactate validity. The ONLY things that invalidate stale lactate are: new vasopressors, new infection, worsening creatinine, or new acidosis since the lactate measurement. Rationale: lactate reflects hepatic/systemic metabolic function; if it was normal and no deterioration occurred since, it remains physiologically valid. In APAP hyperacute ALF, bilirubin excretory lag commonly continues rising for days after synthetic function (INR) recovers. When ALL other organ systems confirm recovery (no organ support, resolved HE, normal renal function, low lactate), rising bilirubin alone is excretory lag, NOT failed regeneration. If the bilirubin lag exception applies, predict SURVIVAL regardless of specialist votes.
+BILIRUBIN LAG EXCEPTION (APAP ONLY, BINDING): If the first three criteria (peak INR 2-5, ALT >80% down, lactate <=2 or HE 0-1) are met but bilirubin is STILL RISING (has not peaked yet), Priority 1C IS STILL MET if ALL of: HE grade 0-2 (expanded: HE grade 2 qualifies when HE trajectory is IMPROVING from a higher grade, e.g., grade 4->2 or grade 3->2; static HE grade 2 without improvement also qualifies), no vasopressor support, no documented infection, creatinine stable or improving. VENTILATED APAP EXTENSION: If the patient is on mechanical ventilation BUT PaO2/FiO2 >= 2.0 (ventilation is for airway protection in HE, NOT respiratory failure) AND APAP etiology AND no vasopressors AND no infection, the "no mechanical ventilation" condition is RELAXED -- ventilation does not block the bilirubin lag exception (MOST RECENT trend -- a creatinine that went up then came down, e.g. 3.9->5.4->3.7, IS "improving" because the latest direction is downward; non-monotonic trajectories that are currently declining count as improving), AND lactate <=2.0 or declining to <=2.0. STALE LACTATE PROVISION (BINDING): If the most recent available lactate was <=2.0 (even if from a prior day, e.g., Day 3 lactate of 2.0 when evaluating Day 6) AND there has been no subsequent metabolic deterioration (no vasopressors added, no new infection, creatinine stable/improving, no acidosis), the stale lactate satisfies the <=2.0 requirement. Do NOT reject stale lactate by saying "cannot be verified," "not contemporaneous," "cannot safely assume," or any similar hedging language -- the provision explicitly covers non-contemporaneous lactate values. Rising bilirubin does NOT invalidate stale lactate; bilirubin is an excretory marker, NOT a metabolic marker, and its trend is irrelevant to lactate validity. The ONLY things that invalidate stale lactate are: new vasopressors, new infection, worsening creatinine, or new acidosis since the lactate measurement. Rationale: lactate reflects hepatic/systemic metabolic function; if it was normal and no deterioration occurred since, it remains physiologically valid. In APAP hyperacute ALF, bilirubin excretory lag commonly continues rising for days after synthetic function (INR) recovers. When ALL other organ systems confirm recovery (no organ support, resolved HE, normal renal function, low lactate), rising bilirubin alone is excretory lag, NOT failed regeneration. If the bilirubin lag exception applies, predict SURVIVAL regardless of specialist votes.
+MISSING LACTATE RULE (BINDING): If lactate was NEVER measured during the entire observation period AND the patient has NO hemodynamic instability (no vasopressors, no acidosis with pH <7.30), missing lactate does NOT block ANY recovery pathway or waiver. Missing lactate REMOVES BLOCKERS only -- it does NOT satisfy POSITIVE criteria. Specifically: missing lactate does NOT count as "lactate <2" for the P1B additional condition, the Extreme Bilirubin waiver, or any other rule that requires lactate <2 as a POSITIVE requirement. Missing lactate means the clinicians did not consider lactate clinically concerning enough to measure -- it is neutral, not favorable.
+STALE HIGH LACTATE RULE (BINDING): Lactate >2.0 that is >72 hours old (3+ days stale) does NOT deny the Extreme Bilirubin waiver or block recovery pathways UNLESS corroborated by CURRENT hemodynamic instability (vasopressors present, acidosis pH <7.30, HCO3 <18). A stale high lactate from early presentation (e.g., Day 2 lactate of 7.8 when evaluating at Day 7) reflects the INITIAL injury, not current metabolic state. When the patient currently has no vasopressors, no acidosis, and improving liver function, the stale high lactate is clinically irrelevant.
+IDENTICAL LACTATE DETECTION: If lactate values are IDENTICAL across 3 or more consecutive days (e.g., 7.0 on Days 1 through 7, or 6.4 on Days 2 through 7), this is a carried-forward data artifact, NOT real repeated measurements. Real lactate values fluctuate. Treat identical-value lactate as STALE from the first occurrence. Apply the Stale High Lactate Rule above.
 WORKED EXAMPLE (STALE LACTATE + BILIRUBIN LAG): Day 6, APAP, peak INR 3.96 (2-5 range = 1C applicable), ALT >80% down, HE grade 0, no vent, no pressors, no infection, creatinine stable. Bilirubin 16.5 still rising (not peaked yet). Last lactate was 2.0 on Day 3 with no subsequent deterioration. Step 1: Stale Lactate Provision applies -- Day 3 lactate of 2.0 IS valid for Day 6. Step 2: All bilirubin lag exception conditions met (HE 0-1, no vent, no pressors, no infection, creatinine stable, lactate <=2.0 via stale provision). Step 3: Priority 1C IS MET via bilirubin lag exception. Step 4: Predict SURVIVAL regardless of specialist votes or bilirubin level.
+NON-APAP BILIRUBIN LAG EXCEPTION: For non-APAP etiologies (especially DILI), if peak INR 2.0-5.0 AND ALT declining AND INR <=1.5 AND lactate <=2.0 AND no vasopressors AND no infection, bilirubin rising does NOT block Priority 1C. Non-APAP bilirubin lag is rarer but does occur in DILI.
+
+**PRIORITY 1D -- LOW PEAK INR / ALT-DOMINANT RECOVERY (Day 5+, BINDING):**
+This pathway covers patients whose peak INR was <2.0 (too low for 1B or 1C) or whose ALT recovery dominates but INR lags:
+(A) PEAK INR <2.0 PATHWAY: If peak INR <2.0 AND current INR <=1.5 (normalized) AND ALT >80% down from peak (or current ALT <100 U/L) AND APAP etiology AND HE grade 0-2 AND no vasopressors AND no rising lactate: predict SURVIVAL. Rationale: these patients had moderate initial coagulopathy that has fully resolved; the low peak INR means Priorities 1B and 1C are structurally inaccessible, but the patient clearly recovered.
+(B) ALT-DOMINANT PATHWAY: If ALT declined >90% from peak AND current ALT <250 U/L AND HE grade 0-1 AND no organ support (no vent, no pressors, no CVVH) AND APAP etiology AND ammonia <100 (if reported): predict SURVIVAL even if INR has not improved sufficiently for other pathways and bilirubin is rising. Rationale: >90% ALT decline with near-normal values proves the necrotic phase has ended; combined with no organ support and resolved HE, this is a recovering patient.
+ALT ABSOLUTE THRESHOLD (applies to ALL Priorities): For ALT >80% decline calculations, if current ALT is <100 U/L (within normal range), the >80% threshold is considered met regardless of mathematical percentage. A patient with peak ALT 200 and current ALT 80 = 60% decline mathematically, but ALT 80 is NORMAL -- the decline criterion is satisfied.
 
 **COMBINATION SIGNAL (BINDING, ABSOLUTE, OVERRIDES ALL EXTRAHEPATIC CONCERNS):** When BOTH moderate-INR recovery (1C criteria met: peak INR 2-5, ALT >80% down, lactate <=2, bilirubin declining from peak) AND uremic HE (Pre-Check A: grade 3-4 HE + ammonia <50 + creatinine >5) apply: predict SURVIVAL. This is BINDING and ABSOLUTE -- no extrahepatic findings can override it. The worsening creatinine IS the cause of the uremic coma and is NOT "multi-organ deterioration" -- it is the EXPECTED pattern in uremic encephalopathy. Mechanical ventilation in uremic coma is airway protection for the comatose patient, NOT evidence of respiratory failure or hepatic non-recovery. Absence of CVVH/RRT is a treatment timing decision, NOT evidence that the patient cannot recover. DO NOT apply "multi-organ active deterioration," "extrahepatic organ failure," "uncontrolled systemic dysfunction," or ANY similar framing to negate this combination signal. DO NOT invent additional requirements beyond the 1C criteria + uremic HE definition listed here. If 1C criteria are met AND uremic HE is confirmed, the answer is SURVIVAL -- full stop.
 WORKED EXAMPLE: Day 7, APAP. 1C: peak INR 2.9 (2-5), ALT >80% down, lactate 1.3, bilirubin 19.5->14.2. Uremic HE: grade 4 coma + ammonia 45 (<50) + creatinine 9.8 (>5). Also: on vent, no CVVH, all 3 specialists predict No. Result: SURVIVAL. The vent is airway protection for uremic coma. The creatinine 9.8 is the CAUSE of the coma. No CVVH is irrelevant to liver recovery. 3/3 No votes are overridden by this BINDING rule.
 
-**PRIORITY 2 -- Only if NO recovery criteria met (including 1C bilirubin lag exception) AND HE NOT uremic:**
+**CRITICAL P1/1B/1C ENFORCEMENT (BINDING):** If Priority 1, 1B, 1C, 1D, or the Combination Signal IS met, Rules 5B and 6 (Extreme Bilirubin) DO NOT APPLY -- period. Check recovery criteria FIRST. If ANY recovery criterion is met, predict SURVIVAL and STOP. Do NOT proceed to Priority 2 rules. Do NOT override a met recovery criterion with a Priority 2 death rule. Do NOT add unstated conditions to invalidate a met criterion. If you explicitly state "Priority 1B IS met" and then predict death anyway, you have violated this rule. When a recovery criterion IS met, the ONLY valid negations are those listed within the criterion itself (e.g., P1B requires ALL THREE of rising lactate + worsening creatinine + new infections to negate).
+CVVH-AWARE CREATININE (BINDING): When CVVH/CRRT is active, creatinine is artificially cleared and cannot be used to EXCLUDE uremic HE (Pre-Check A). If CVVH is active AND grade 3-4 HE AND ammonia <50, treat creatinine as "unassessable" for uremic HE determination -- pre-CVVH creatinine or the need for CVVH itself suggests renal failure severe enough for uremic contribution. For P1B additional condition: if CVVH is active, creatinine is "not assessable" (not "not met") -- use lactate <2 or HE 0-1 as the additional condition instead. For APAP on CVVH with P1B liver labs met, lactate <3.0 (relaxed from <2.0) satisfies the additional condition.
+CVVH DISCONTINUATION REBOUND: Creatinine rise within 48 hours of CVVH discontinuation is a PREDICTABLE rebound (accumulated creatinine is no longer being cleared), NOT new organ deterioration. Do NOT count post-CVVH creatinine rebound as "worsening creatinine" for any negation criterion.
+RECOVERED LIVER + PERSISTENT COMA + MISSING AMMONIA: When liver function has near-normalized (INR <=1.5, ALT >80% down) but persistent grade 3-4 HE continues AND ammonia was NEVER reported: do NOT default to "HE is hepatic." If creatinine >3.0, presume uremic contribution. If creatinine >5.0, presume uremic HE. Missing ammonia + recovered liver + elevated creatinine = likely uremic coma, and the persistent HE death override should NOT fire. When ammonia was never reported AND no formal recovery criterion is met, this scenario warrants following the weighted vote rather than automatic death.
+
+**PRIORITY 2 -- Only if NO recovery criteria met (including 1C bilirubin lag exception, 1D) AND HE NOT uremic:**
 - EXTREME BILIRUBIN (BINDING): Bilirubin >15 in APAP AND not declining = DEATH unless ALL of: HE 0-1, lactate <=2.0, no vent, no pressors, no infection. ANY discordance (HE 2+, lactate >2.0, vent, pressors, infection) = DEATH. Near-normal INR + declining ALT do NOT override this. When Hepatologist says "liver is recovering" but bilirubin >15 with discordance AND no formal Priority 1/1B/1C met: predict DEATH.
-- NON-UREMIC PERSISTENT GRADE 4 HE (BINDING): At Day 5+, if patient has persistent grade 4 coma AND HE is NOT uremic (ammonia >=50 OR creatinine <=5) AND NO formal Priority 1/1B/1C recovery criteria are met: predict DEATH. Persistent grade 4 coma without formal hepatic recovery criteria signals ongoing cerebral injury with high mortality risk. Even if INR is near-normal and ALT is falling, the absence of formal recovery criteria (e.g., bilirubin still rising or INR not yet <1.5) combined with ongoing deep coma = death. Documented infection further compounds this risk. Do NOT override with the weighted vote -- this is BINDING.
+- NON-UREMIC PERSISTENT GRADE 4 HE (BINDING): At Day 5+, if patient has persistent grade 4 coma AND HE is NOT uremic (ammonia >=50 OR creatinine <=5) AND NO formal Priority 1/1B/1C/1D recovery criteria are met: predict DEATH. Persistent grade 4 coma without formal hepatic recovery criteria signals ongoing cerebral injury with high mortality risk. Even if INR is near-normal and ALT is falling, the absence of formal recovery criteria (e.g., bilirubin still rising or INR not yet <1.5) combined with ongoing deep coma = death. Documented infection further compounds this risk. Do NOT override with the weighted vote -- this is BINDING.
+NEAR-RECOVERY EXCEPTION TO RULE 5B: Rule 5B does NOT mandate death when ALL of: (a) INR <=1.5, (b) ALT >80% down from peak (or current ALT <100 U/L), (c) APAP etiology, (d) no documented infection, (e) lactate not rising (stable or declining or missing). When the liver has objectively recovered (near-normal INR + massive ALT decline + no infection + no metabolic failure), the persistent grade 4 HE may represent slow neurological recovery or non-hepatic coma (sedation, uremic contribution). In this context, follow the weighted vote rather than mandating death. CRITICAL: Patient 1279 had documented INFECTION + ammonia 73.5 -- the near-recovery exception does NOT apply to patients with infection.
 - NEAR-KCC WITHOUT TRAJECTORY (day 1-2) = death.
+- P1/1B EXTRAHEPATIC DETERIORATION NEGATION: Even when Priority 1 or 1B criteria ARE met, predict DEATH if: creatinine is monotonically rising over 4+ consecutive days AND (RRT/CVVH was discontinued despite worsening creatinine OR RRT/CVVH was never initiated despite creatinine >3.5) AND grade 4 HE persists. This represents progressive multi-organ failure despite liver recovery -- the patient is dying from extrahepatic causes. This negation is NARROW: isolated creatinine worsening without the RRT pattern does NOT negate P1/1B.
+- EXTREME PERSISTENT INR WITHOUT TRAJECTORY: If Day 5+ AND INR >6.5 AND NO demonstrated INR improvement trajectory AND no formal recovery criteria (P1/1B/1C/1D) met AND HE >=2 AND bilirubin >5: predict DEATH. This addresses patients with persistently extreme coagulopathy where recovery has not begun.
 - APAP LACTATE (BINDING): OSCILLATING extreme lactate (going up AND down, not steadily rising) with hemodynamic stability (no vasopressors or stable on vasopressors) = Type B lactic acidosis from APAP mitochondrial dysfunction, NOT circulatory failure. When lactate oscillates AND patient has no vasopressors AND liver recovery criteria are met (Priority 1/1B/1C), lactate does NOT override survival prediction. Do NOT predict death based on elevated lactate alone when it is oscillating with hemodynamic stability.
 - CRITICAL ENFORCEMENT: When NO Priority 1/1B/1C criteria are formally met, you CANNOT predict survival based on informal recovery impression regardless of how good INR/ALT look. "Close to meeting criteria" is NOT meeting criteria -- 54% INR improvement is not >60%, and 74% ALT decline is not >80%. You MUST apply Priority 2 overrides if conditions are met. Even if all 3 specialists predict Yes and INR is clearly improving, if formal thresholds are not reached and bilirubin >15 with discordance, Extreme Bilirubin DEATH override takes precedence.
 
@@ -1054,8 +2031,8 @@ WORKED EXAMPLE: Day 7, APAP. 1C: peak INR 2.9 (2-5), ALT >80% down, lactate 1.3,
 1. **Pre-Check C (BINDING at Day 1-3):** If Day 1-3 AND patient is on mechanical ventilation: predict DEATH. Mechanical ventilation at Day 1-3 is an independent mortality predictor not captured by ALFSG-PI. Even if specialists vote Yes based on improving liver labs, ventilator dependence at Day 1-3 overrides. This takes priority over the weighted vote.
 1B. **Pre-Check B (BINDING at Day 2-3; CONDITIONAL at Day 1):** If Day 2-3 AND ammonia >150 or lactate >4 not declining or bilirubin rising: predict DEATH. At Day 1, ammonia >150 NOT binding if HE 0-1 + no vent + no pressors. A declining ammonia that is still >150 is STILL dangerous at Day 2-3. If ammonia is NOT reported in the clinical data, it is treated as NOT triggering Pre-Check B. BILIRUBIN RISING EXCEPTION (Day 2-3 ONLY): If the ONLY Pre-Check B trigger is "bilirubin rising" (ammonia <=150 or not reported, AND lactate <=4 or declining) AND INR has improved >50% from peak AND HE grade 0-1 AND no mechanical ventilation AND no vasopressor support AND lactate <=2.0 (including stale lactate from a prior day -- a Day 2 lactate of 2.0 IS valid for Day 3; there is NO "current-value rule" or "same-day requirement"; 2.0 equals <=2.0): Pre-Check B is WAIVED. Rationale: In APAP, bilirubin excretory lag commonly causes rising bilirubin at Day 2-3 even as INR dramatically recovers. When INR recovery demonstrates liver regeneration and no organ support is needed, isolated rising bilirubin is excretory lag, NOT metabolic failure. Follow the weighted vote instead.
 2. **Pre-Check A:** If HE is uremic (grade 3-4 HE + ammonia <50 + creatinine >5): the HE death override is NULLIFIED. Assess liver trajectory independently.
-2B. **Day 4 Rule (BINDING):** At Day 4, Priority 1/1B/1C are NOT available. If persistent grade 4 HE + PaO2/FiO2 < 2.0 + HE not uremic: predict DEATH regardless of liver recovery. Hepatologist liver recovery assessment does NOT override neurologic death risk at Day 4.
-3. If ANY recovery criteria met (Priority 1, 1B, or 1C including bilirubin lag exception at Day 5+ ONLY) AND no multi-organ active deterioration: predict SURVIVAL regardless of weighted vote. For Priority 1: the ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 2.0. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone (even creatinine >5) are NOT grounds to override Priority 1 -- these are ICU-manageable when the liver is regenerating. For Priority 1B specifically: negation requires ALL THREE of rising lactate + worsening creatinine + new infections. Vasopressors/ventilation alone do NOT negate 1B when lactate is normal. Isolated creatinine worsening is ATN lag. Rising bilirubin does NOT negate 1B. STRICT BILIRUBIN applies ONLY to Priority 1: if bilirubin trend is "Increasing," Priority 1 is NOT met -- but check Priority 1B and 1C (they have DIFFERENT criteria). For Priority 1C: if bilirubin is still rising but ALL other systems confirm recovery (HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), the bilirubin lag exception makes 1C met -- predict SURVIVAL.
+2B. **Day 4 Rule (BINDING):** At Day 4, Priority 1/1B/1C are NOT available. If persistent grade 4 HE + PaO2/FiO2 < 1.5 + HE not uremic: predict DEATH regardless of liver recovery. Hepatologist liver recovery assessment does NOT override neurologic death risk at Day 4.
+3. If ANY recovery criteria met (Priority 1, 1B, 1C including bilirubin lag exception, or 1D at Day 5+ ONLY) AND no multi-organ active deterioration: predict SURVIVAL regardless of weighted vote. ENFORCEMENT: If you determine a recovery criterion IS met, you MUST predict SURVIVAL. Do NOT then override with a Priority 2 death rule. Priority 2 rules ONLY apply when NO recovery criterion is met. For Priority 1: the ONLY exception is non-uremic grade 4 HE (NOT grade 3) with PaO2/FiO2 < 1.5. Mechanical ventilation alone, grade 3 HE alone, and severe creatinine/AKI alone (even creatinine >5) are NOT grounds to override Priority 1 -- these are ICU-manageable when the liver is regenerating. For Priority 1B specifically: negation requires ALL THREE of rising lactate + worsening creatinine + new infections. Vasopressors/ventilation alone do NOT negate 1B when lactate is normal. Isolated creatinine worsening is ATN lag. Rising bilirubin does NOT negate 1B. STRICT BILIRUBIN applies ONLY to Priority 1: if bilirubin trend is "Increasing," Priority 1 is NOT met -- but check Priority 1B and 1C (they have DIFFERENT criteria). For Priority 1C: if bilirubin is still rising but ALL other systems confirm recovery (HE 0-1, no vent, no pressors, no infection, creatinine OK, lactate <=2), the bilirubin lag exception makes 1C met -- predict SURVIVAL.
 4. If Hepatologist identifies liver recovery AND predicts survival AND Day 5+: give DECISIVE weight. NOT applicable at Day 4 with persistent grade 4 HE. When bilirubin is rising, verify if Priority 1B or 1C (including bilirubin lag exception) criteria are met before dismissing recovery.
 5. COMBINATION (BINDING, OVERRIDES ALL EXTRAHEPATIC CONCERNS): If Priority 1C criteria met (peak INR 2-5, ALT >80% down, lactate <=2, bilirubin declining from peak) AND uremic HE (Pre-Check A: grade 3-4 HE + ammonia <50 + creatinine >5): predict SURVIVAL. This is ABSOLUTE and FINAL. The multi-organ deterioration check is WAIVED. DO NOT override this rule by citing mechanical ventilation, severe AKI, lack of RRT/CVVH, hemodynamic support, or ANY extrahepatic organ failure. In uremic coma, ventilator dependence is airway protection for coma (NOT respiratory failure), profound AKI is the CAUSE of the coma (NOT a separate organ failing), and absence of CVVH/RRT is a treatment decision, NOT evidence of non-recovery. Even if ALL specialists predict No, this combination overrides. DO NOT invent terms like "uncontrolled extrahepatic organ failure" or "severe multi-system dysfunction" to circumvent this rule -- the rule already accounts for these findings.
 WORKED EXAMPLE (COMBINATION SIGNAL): Day 7, APAP, peak INR 2.9 (2-5 range), ALT >80% down, lactate 1.3 (<=2), bilirubin 19.5->14.2 (declining from peak). HE: grade 4 coma, ammonia 45 (<50), creatinine 9.8 (>5) = uremic HE confirmed. Also: mechanical ventilation, no CVVH. Step 1: 1C criteria -- peak INR 2.9 (2-5), ALT >80% down, lactate 1.3, bilirubin declining = ALL MET. Step 2: Uremic HE -- grade 4 + ammonia 45 <50 + creatinine 9.8 >5 = CONFIRMED. Step 3: Combination Signal = BINDING SURVIVAL. Step 4: Vent + creatinine 9.8 + no CVVH = EXPECTED in uremic coma, NOT grounds to override. Predict SURVIVAL. If you are tempted to say "but the patient has severe extrahepatic organ failure" -- STOP. That IS the uremic coma pattern this rule explicitly covers.
@@ -1063,12 +2040,24 @@ WORKED EXAMPLE (COMBINATION SIGNAL): Day 7, APAP, peak INR 2.9 (2-5 range), ALT 
 WORKED EXAMPLE (5B OVERRIDES 3/3 YES WITH NEAR-NORMAL INR): Day 7, APAP, INR 1.47 (<1.5), ALT 90% down (>80%), bilirubin 5.5->7.2->7.8 (RISING, not declining). Grade 4 coma, ammonia 73.5 (>=50 = NOT uremic), documented infection. ALFSG-PI 79%. No vasopressors, no rising lactate, improving creatinine. Step 1: Priority 1 -- INR <1.5 YES, ALT >80% down YES, bilirubin declining NO (rising). Priority 1 = NOT MET (2 of 3 is NOT 3 of 3). Step 2: Priority 1B -- peak INR 3.48, not >5.0 = NOT APPLICABLE. Priority 1C -- peak INR 3.48 is in 2-5 range but bilirubin is rising and bilirubin lag exception requires HE 0-1 (patient has grade 4) = NOT MET. Step 3: No formal recovery criteria met. MANDATORY: proceed to Rule 5B. Step 4: Rule 5B -- persistent grade 4 coma + ammonia 73.5 >=50 (not uremic) + no formal recovery + infection = DEATH. Even though INR is nearly normal and ALT is 90% down and 2/3 specialists predict Yes and ALFSG-PI is 79% and there are no vasopressors -- without ALL THREE Priority 1 criteria met, there is NO formal recovery, and Rule 5B fires. Do NOT rationalize with "the dominant physiologic trajectory is favorable" or "recovery more likely than not" -- formal criteria are formal criteria. If you are tempted to predict survival because the labs look good -- STOP. Check Rule 5B. Grade 4 coma + no formal recovery + infection = DEATH.
 6. **EXTREME BILIRUBIN ENFORCEMENT (BINDING, OVERRIDES WEIGHTED VOTE):** MANDATORY PRE-CHECK: BEFORE applying this rule, verify whether the BILIRUBIN LAG EXCEPTION makes Priority 1C met. If peak INR is 2-5 AND ALT >80% down AND (lactate <=2 OR HE 0-1) AND ALL bilirubin lag exception conditions are satisfied (HE 0-1, no vent, no pressors, no infection, creatinine stable or improving per MOST RECENT trend, lactate <=2 including via Stale Lactate Provision), then 1C IS MET via bilirubin lag exception and this Extreme Bilirubin rule DOES NOT FIRE -- predict SURVIVAL per Rule 3. "Creatinine improving" means the most recent direction is downward (e.g., 3.9->5.4->3.7 = improving because 5.4->3.7 is declining). Only proceed with Extreme Bilirubin if the bilirubin lag exception does NOT apply.
 PEAK INR VERIFICATION: Priority 1B requires peak INR >5.0. Priority 1C requires peak INR 2.0-5.0. If peak INR is <2.0, NEITHER 1B NOR 1C can be invoked -- only Priority 1 (which requires bilirubin declining). A patient with peak INR <2.0 AND bilirubin not declining has NO formal recovery criteria regardless of INR normalization. NEAR-MISS DOES NOT COUNT: If INR improvement is 54% (below 60%) or ALT decline is 74% (below 80%), Priority 1B is NOT met even though it is "close." Formal criteria require STRICT threshold adherence -- 59% improvement is NOT >60%, and 79% ALT decline is NOT >80%. Do NOT treat near-miss as "likely recovery" or "trajectory toward recovery" -- if thresholds are not met, no formal criteria are met, and Extreme Bilirubin MUST be applied.
-If bilirubin >15 in APAP AND not declining AND NO formal recovery criteria (Priority 1/1B/1C including bilirubin lag exception) are met: check the five exception conditions (HE 0-1, lactate <=2.0, no vent, no pressors, no infection). If ANY SINGLE exception FAILS (HE 2+, lactate >2.0, vent present, pressors present, infection present): predict DEATH regardless of how specialists voted (even 3/3 Yes). Normalized INR and declining ALT do NOT override extreme bilirubin with discordance. HOWEVER: If ALL FIVE exception conditions ARE met (HE 0-1, lactate <=2.0, no vent, no pressors, no infection), the Extreme Bilirubin rule is WAIVED -- follow the weighted vote. Rationale: bilirubin >15 with a completely benign extrahepatic profile (no organ support, no encephalopathy, no infection) is excretory lag in a recovering patient, not failed regeneration.
+If bilirubin >15 in APAP AND not declining AND NO formal recovery criteria (Priority 1/1B/1C including bilirubin lag exception) are met: check the five exception conditions (HE 0-1, lactate <=2.0, no vent, no pressors, no infection). If ANY SINGLE exception FAILS (HE 2+, lactate >2.0, vent present, pressors present, infection present): predict DEATH regardless of how specialists voted (even 3/3 Yes). Normalized INR and declining ALT do NOT override extreme bilirubin with discordance. HOWEVER: If ALL FIVE exception conditions ARE met (HE 0-1, lactate <=2.0, no vent, no pressors, no infection), the Extreme Bilirubin rule is WAIVED -- follow the weighted vote. BINARY ENFORCEMENT: The 5-condition waiver is BINARY. If ALL FIVE conditions are satisfied, the waiver APPLIES regardless of absolute bilirubin magnitude -- bilirubin 16, 27, or 40 mg/dL are all treated identically. Do NOT invent hidden conditions such as "bilirubin must show peak/decline pattern," "bilirubin level is too extreme for waiver," "bilirubin must be stabilizing," or "additional monitoring needed." The ONLY conditions are the five listed. If all five are met, the waiver applies -- full stop. Rationale: bilirubin >15 with a completely benign extrahepatic profile (no organ support, no encephalopathy, no infection) is excretory lag in a recovering patient, not failed regeneration. LACTATE FOR WAIVER: The lactate <=2.0 condition uses the same Stale Lactate Provision and Missing Lactate Rule as elsewhere. Stale lactate <=2.0 satisfies this condition. Missing lactate does NOT satisfy it (missing lactate removes blockers but does not meet positive criteria). Stale HIGH lactate >72h old without current hemodynamic instability does NOT block the waiver per the Stale High Lactate Rule.
 WORKED EXAMPLE 1 (EXTREME BILI OVERRIDES 3/3 YES): Day 7, APAP, bilirubin 15.5->15.8 (>15, not declining), INR 1.3 (normalized), ALT >90% down. BUT: mechanical ventilation + HE grade 2 + severe AKI. Priority 1 NOT met (bilirubin not declining). Priority 1B NOT met (peak INR <5). Exception check: HE grade 2 = FAILS HE 0-1 condition. RESULT: Extreme Bilirubin BINDING DEATH even though all 3 specialists predict Yes. The vent + HE grade 2 discordance overrides the normalized INR/ALT.
+WORKED EXAMPLE (ALL FIVE EXCEPTIONS MET = SURVIVAL): Day 7, APAP, bilirubin 15.3 (rising from 13.7, >15), INR 1.4 (normalized), ALT 7890->782 (>80% down), lactate 1.5 (<=2.0), HE grade 0 (0-1), no mechanical ventilation, no vasopressors, no documented infection, ALFSG-PI 86.6% (favorable), all 3 specialists predict Yes. Step 1: bilirubin >15 and not declining = EXTREME BILIRUBIN rule triggered. Step 2: Check five exception conditions: HE grade 0 = MET, lactate 1.5 <=2.0 = MET, no vent = MET, no pressors = MET, no infection = MET. All FIVE conditions ARE MET. Step 3: Extreme Bilirubin rule is WAIVED. Step 4: Predict SURVIVAL (all 3 specialists Yes). Do NOT apply DEATH just because bilirubin is >15 or because INR is normalized or ALFSG-PI is favorable -- the rule explicitly says "if all five exception conditions are met...Extreme Bilirubin rule is WAIVED." If you are tempted to add conditions like "the rule still requires that no formal recovery criteria are met" -- STOP. That is NOT in the rule.
 WORKED EXAMPLE 2 (NEAR-MISS RECOVERY DOES NOT SAVE): Day 7, APAP, peak INR 5.2, current INR 2.38, ALT 1847->482 (74% down), bilirubin 18 and rising, HE grade 2, on mechanical ventilation + CVVH, no vasopressors, lactate 1.46. Step 1: Priority 1 -- INR not <1.5, bilirubin not declining = NOT MET. Step 2: Priority 1B -- peak INR 5.2 >5.0, so 1B applicable. INR improvement = (5.2-2.38)/5.2 = 54.2%. This is BELOW >60% threshold. ALT 74% down is BELOW >80% threshold. Priority 1B = NOT MET (even though "close"). Step 3: Priority 1C -- peak INR 5.2 is NOT in 2.0-5.0 range = NOT APPLICABLE. Step 4: NO formal recovery criteria met. Step 5: Extreme Bilirubin check -- bilirubin 18 (>15), rising, APAP. Exception check: HE grade 2 FAILS (need 0-1). Mechanical ventilation FAILS (need no vent). Step 6: RESULT = Extreme Bilirubin BINDING DEATH. Even though INR is "improving" and ALT is "declining" and all 3 specialists vote Yes -- when formal criteria are not met and bilirubin >15 with discordance, predict DEATH.
 6B. APAP LACTATE CONTEXT (BINDING): When lactate is extreme but OSCILLATING (going up AND down, not steadily rising) AND patient has no vasopressors or is hemodynamically stable, this is Type B mitochondrial lactic acidosis, NOT circulatory failure. If recovery criteria (Priority 1/1B/1C) are met AND lactate is oscillating with hemodynamic stability, lactate does NOT override the survival prediction. Do NOT predict death based on oscillating lactate when the liver is recovering and hemodynamics are stable.
-7. **Day 1-3 EARLY ASSESSMENT RULE (BINDING):** At Day 1-3, no formal recovery criteria (Priority 1/1B/1C) are available. If Pre-Check C is triggered (mechanical ventilation), predict DEATH regardless of weighted vote. If Pre-Check B is triggered (and the Bilirubin Rising Exception does NOT apply), predict DEATH. DAY 1 FAVORABLE OVERRIDE: At Day 1 specifically, if Pre-Check B Day 1 exception is active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors) AND the Hepatologist predicts Yes AND ALFSG-PI >85%: predict SURVIVAL regardless of CC/TS votes. Rationale: The Hepatologist is the liver specialist, and their favorable assessment at Day 1 with high ALFSG-PI and no organ support outweighs CC/TS concerns about ammonia when the Day 1 exception explicitly makes ammonia non-binding. CC and TS often vote No based on ammonia risk despite the exception -- this override corrects that bias. If neither Pre-Check B nor C is triggered AND no Day 1 favorable override applies AND no other binding override applies, follow the WEIGHTED VOTE. The ONLY exceptions at Day 1-3 that can override the weighted vote are: binding Pre-Check B death override, binding Pre-Check C death override, and the Day 1 favorable survival override above.
+7. **Day 1-3 EARLY ASSESSMENT RULE (BINDING):** At Day 1-3, no formal recovery criteria (Priority 1/1B/1C) are available. If Pre-Check C is triggered (mechanical ventilation), predict DEATH regardless of weighted vote. If Pre-Check B is triggered (and the Bilirubin Rising Exception does NOT apply), predict DEATH. DAY 1 FAVORABLE OVERRIDE: At Day 1 specifically, if Pre-Check B Day 1 exception is active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors) AND the Hepatologist predicts Yes AND ALFSG-PI >80% (relaxed from >85% when APAP AND no organ support -- no vent, no pressors, no CVVH): predict SURVIVAL regardless of CC/TS votes. Rationale: The Hepatologist is the liver specialist, and their favorable assessment at Day 1 with high ALFSG-PI and no organ support outweighs CC/TS concerns about ammonia when the Day 1 exception explicitly makes ammonia non-binding. CC and TS often vote No based on ammonia risk despite the exception -- this override corrects that bias. If neither Pre-Check B nor C is triggered AND no Day 1 favorable override applies AND no other binding override applies, follow the WEIGHTED VOTE. The ONLY exceptions at Day 1-3 that can override the weighted vote are: binding Pre-Check B death override, binding Pre-Check C death override, and the Day 1 favorable survival override above.
 8. Otherwise: follow the weighted vote. IMPORTANT: You may ONLY reach this step if NO binding rule above (Pre-Checks, Priorities, Rules 5B, 6) has been triggered. If you find yourself here while the patient has grade 4 HE and no formal recovery criteria -- STOP, you have skipped Rule 5B. Go back and check."""
+
+    # Conditional prompting: inject phenotype-specific skills, criteria, and binding rules
+    vignette = state.get('vignette', '')
+    criteria_eval = format_criteria_evaluation(vignette)
+    parsed = parse_vignette(vignette)
+    phenotype_tags = classify_phenotype(parsed)
+    skills_text = select_skills(phenotype_tags)
+    binding_rules_text = format_binding_rules_skill(parsed)
+
+    if phenotype_tags:
+        logger.info(f"Committee Chair: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
 
     prompt = f"""{system_prompt}
 
@@ -1090,6 +2079,12 @@ Weighted Analysis:
 - Hepatologist: {weights['hepatologist']*100:.2f}% weight → {hepatologist.decision if hepatologist else "N/A"}
 - Weighted Score: {yes_votes:.2f} (threshold: 0.50)
 - Weighted Decision: {weighted_decision}
+
+{criteria_eval}
+{skills_text}
+{binding_rules_text}
+
+You MUST use the pre-computed values above (INR improvement %, ALT decline %, peak INR, etc.) in your criteria evaluation. Do NOT re-calculate these values -- use them as provided. If the criteria checklist shows a criterion as "ALL MET," you must acknowledge it in your reasoning and apply the corresponding binding rule.
 
 Provide your final synthesis and prediction."""
 
@@ -1145,12 +2140,13 @@ Provide your final synthesis and prediction."""
                 reasoning=f"Weighted analysis: {yes_votes:.2f} weighted score. No JSON found in response."
             )
         
-        # The Committee Chair's LLM output is the final prediction.
-        # Do NOT override with weighted_decision -- the Committee Chair
-        # is designed to override the weighted vote when clinical criteria
-        # (demonstrated recovery, death overrides) warrant it.
-
+        # Pure LLM output -- no post-processing override.
+        # Binding rules are injected as a skill block into the prompt so the LLM
+        # makes the decision itself, informed by deterministic criteria.
         state['final_prediction'] = prediction
+        state['llm_prediction'] = prediction.prediction
+        state['post_processed'] = False
+        state['override_reason'] = ""
         logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
         
     return state
@@ -1197,17 +2193,23 @@ def process_patient_day(row: pd.Series, graph) -> dict:
         "hepatologist_output": None,
         "critical_care_output": None,
         "transplant_surgeon_output": None,
-        "final_prediction": None
+        "final_prediction": None,
+        "llm_prediction": "",
+        "post_processed": False,
+        "override_reason": ""
     }
-    
+
     # Run the graph
     final_state = graph.invoke(state)
-    
+
     return {
         'final_prediction': final_state['final_prediction'],
         'hepatologist_output': final_state['hepatologist_output'],
         'critical_care_output': final_state['critical_care_output'],
-        'transplant_surgeon_output': final_state['transplant_surgeon_output']
+        'transplant_surgeon_output': final_state['transplant_surgeon_output'],
+        'llm_prediction': final_state.get('llm_prediction', ''),
+        'post_processed': final_state.get('post_processed', False),
+        'override_reason': final_state.get('override_reason', '')
     }
 
 def main():
@@ -1221,6 +2223,8 @@ def main():
                         help='Specific patient ID(s) to process (default: all patients). Can specify multiple IDs separated by spaces.')
     parser.add_argument('--deployment', type=str, default='gpt-5',
                         help='Deployment/model name to use (default: gpt-5). Options: gpt-5, gpt-4.1-mini, gpt-5-mini, claude-opus-4-1, claude-sonnet-4-5')
+    parser.add_argument('--no-criteria-injection', action='store_true', default=False,
+                        help='Disable pre-computed criteria injection into Committee Chair prompt')
     
     args = parser.parse_args()
     
@@ -1228,6 +2232,8 @@ def main():
     
     # Set deployment name globally via environment variable so all agents use it
     os.environ["DEPLOYMENT_NAME"] = args.deployment
+    os.environ["CRITERIA_INJECTION_ENABLED"] = "0" if args.no_criteria_injection else "1"
+    logger.info(f"Criteria injection: {'DISABLED' if args.no_criteria_injection else 'ENABLED'}")
     
     logger.info("Initializing Multi-Agent System")
     logger.info(f"Using deployment: {args.deployment}")
@@ -1300,6 +2306,10 @@ def main():
             actual_survival_val = row.get('Spont_Survival21', None)
             actual_survival_text = "Yes" if actual_survival_val == 1 else ("No" if actual_survival_val == 0 else None)
             
+            llm_pred = outputs.get('llm_prediction', '')
+            was_overridden = outputs.get('post_processed', False)
+            override_reason = outputs.get('override_reason', '')
+
             results.append({
                 'subject_id': int(row['subject_id']),
                 'day': int(row['day']),
@@ -1307,6 +2317,9 @@ def main():
                 'final_prediction': final_pred.prediction if final_pred else None,
                 'final_confidence': final_pred.confidence if final_pred else None,
                 'final_reasoning': final_pred.reasoning if final_pred else None,
+                'llm_prediction': llm_pred if llm_pred else (final_pred.prediction if final_pred else None),
+                'post_processed': was_overridden,
+                'override_reason': override_reason,
                 'hepatologist_decision': hepatologist.decision if hepatologist else None,
                 'hepatologist_confidence': hepatologist.confidence if hepatologist else None,
                 'hepatologist_reasoning': hepatologist.reasoning if hepatologist else None,
@@ -1319,6 +2332,7 @@ def main():
                 'actual_survival': actual_survival_val,
                 'actual_survival_text': actual_survival_text,
                 'Final_Correct': (final_pred.prediction == actual_survival_text) if (final_pred and actual_survival_text) else None,
+                'llm_correct': (llm_pred == actual_survival_text) if (llm_pred and actual_survival_text) else None,
                 'hepatologist_correct': (hepatologist.decision == actual_survival_text) if (hepatologist and actual_survival_text) else None,
                 'critical_care_correct': (critical_care.decision == actual_survival_text) if (critical_care and actual_survival_text) else None,
                 'transplant_surgeon_correct': (transplant_surgeon.decision == actual_survival_text) if (transplant_surgeon and actual_survival_text) else None
@@ -1336,6 +2350,9 @@ def main():
                 'final_prediction': 'Error',
                 'final_confidence': 0.0,
                 'final_reasoning': str(e),
+                'llm_prediction': 'Error',
+                'post_processed': False,
+                'override_reason': '',
                 'hepatologist_decision': None,
                 'hepatologist_confidence': None,
                 'hepatologist_reasoning': None,
@@ -1348,6 +2365,7 @@ def main():
                 'actual_survival': actual_survival_val,
                 'actual_survival_text': actual_survival_text,
                 'Final_Correct': None,
+                'llm_correct': None,
                 'hepatologist_correct': None,
                 'critical_care_correct': None,
                 'transplant_surgeon_correct': None
@@ -1363,15 +2381,21 @@ def main():
     if len(valid_df) > 0:
         # Calculate accuracy for each agent and final prediction
         final_accuracy = valid_df['Final_Correct'].sum() / len(valid_df) if 'Final_Correct' in valid_df.columns else 0.0
+        llm_accuracy = valid_df['llm_correct'].sum() / len(valid_df) if 'llm_correct' in valid_df.columns else 0.0
         hepatologist_accuracy = valid_df['hepatologist_correct'].sum() / len(valid_df) if 'hepatologist_correct' in valid_df.columns else 0.0
         critical_care_accuracy = valid_df['critical_care_correct'].sum() / len(valid_df) if 'critical_care_correct' in valid_df.columns else 0.0
         transplant_surgeon_accuracy = valid_df['transplant_surgeon_correct'].sum() / len(valid_df) if 'transplant_surgeon_correct' in valid_df.columns else 0.0
-        
+
         logger.info(f"\nAccuracy Metrics (based on {len(valid_df)} predictions with ground truth):")
         logger.info(f"  Final Prediction Accuracy: {final_accuracy:.4f} ({final_accuracy*100:.2f}%)")
+        logger.info(f"  LLM-Only Accuracy: {llm_accuracy:.4f} ({llm_accuracy*100:.2f}%)")
         logger.info(f"  Hepatologist Accuracy: {hepatologist_accuracy:.4f} ({hepatologist_accuracy*100:.2f}%)")
         logger.info(f"  Critical Care Physician Accuracy: {critical_care_accuracy:.4f} ({critical_care_accuracy*100:.2f}%)")
         logger.info(f"  Transplant Surgeon Accuracy: {transplant_surgeon_accuracy:.4f} ({transplant_surgeon_accuracy*100:.2f}%)")
+
+        # Post-processing impact
+        override_count = valid_df['post_processed'].sum() if 'post_processed' in valid_df.columns else 0
+        logger.info(f"  Post-processing overrides: {int(override_count)} predictions modified")
     else:
         logger.warning("No valid ground truth data available for accuracy calculation")
     
