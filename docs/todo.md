@@ -1,6 +1,6 @@
 # TODO - Full 1,260-Patient Evaluation
 
-**Last updated:** 2026-03-17 16:55:00
+**Last updated:** 2026-03-17 19:36:00
 **Plan:** docs/plans/2026-03-03-full-1260-patient-evaluation-plan.md
 
 ## Active Run: v0.9.4-dev GPT-5.4 Comparison (2026-03-17)
@@ -17,10 +17,9 @@
 - 1536: No -> No (correct)
 - 1624: Yes -> Yes (correct)
 
-### GPT-5.4 Batch 1 Status
-- Started: 2026-03-17 14:52
-- Progress: 78/100 completed (2026-03-17 16:14)
-- ETA: ~15-20 minutes remaining
+### GPT-5.4 Batch Status
+- Batch 1: COMPLETE -- 100/100 (100.0%)
+- Batch 2: COMPLETE -- 81/100 (81.0%)
 
 ### GPT-5.4-Pro Notes
 - Model `gpt-5.4-pro` does NOT support chat.completions API
@@ -38,12 +37,32 @@
 | False Negatives | 0 | - |
 | False Positives | 0 | - |
 
+### GPT-5.4 Batch 2 Results (v0.9.4-dev) -- COMPLETE
+| Metric | GPT-5.4 | GPT-5.2 |
+|--------|---------|----------|
+| Final Accuracy | 81/100 (81.0%) | 84/100 (84.0%) |
+| Hepatologist | 84/100 (84.0%) | - |
+| Critical Care | 81/100 (81.0%) | - |
+| Transplant Surgeon | 85/100 (85.0%) | - |
+| False Negatives | 14 | 13 |
+| False Positives | 5 | 3 |
 
----### Comparison Plan
-| Model | Batch 1 | Remaining Batches |
-|--------|----------|------------------|
-| GPT-5.2 | 99/100 (99.0%) | 12 batches (1117/1260 total) |
-| GPT-5.4 | **100/100 (100.0%)** | TBD |
+**Failure comparison (Batch 2):**
+- Shared FN (13): 1652, 1673, 1776, 1788, 1885, 1887, 1932, 1933, 1990, 2011, 2184, 2228, 2323
+- GPT-5.4 new FN regression (1): 2211
+- Shared FP (2): 1775, 2235
+- GPT-5.4 new FP regressions (3): 1633, 1635, 1726
+- GPT-5.2 FP fixed by 5.4 (1): 1643
+
+GPT-5.4 gained 4 new failures and fixed 1, net -3 vs GPT-5.2 on Batch 2.
+
+---
+
+### Comparison Plan
+| Model | Batch 1 | Batch 2 | Remaining Batches |
+|--------|----------|---------|------------------|
+| GPT-5.2 | 99/100 (99.0%) | 84/100 (84.0%) | 11 batches (1117/1260 total) |
+| GPT-5.4 | **100/100 (100.0%)** | 81/100 (81.0%) | TBD |
 
 ---
 

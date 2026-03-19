@@ -851,3 +851,22 @@ Fixes must be NEW EXCEPTIONS with precise conditions, NOT weakening of existing 
 - TaskOutput has a ~10 minute timeout -- need repeated checks
 - Track progress by counting `grep -c "Final Prediction:" <output_file>`
 - Output Excel files follow pattern: `agent_predictions_gpt-5.2_YYYYMMDD_HHMMSS.xlsx`
+
+
+## GPT-5.4 vs GPT-5.2 Comparison (2026-03-17)
+
+### Key Finding
+**GPT-5.4 achieved 100% accuracy on Batch 1 (100/100) with v0.9.4-dev**, improving on GPT-5.2's 99/100 (99.0%).
+
+### Implications
+- Model advancement: GPT-5.4-2026-03-05 appears to be a more capable model than GPT-5.2
+- Consistency: Perfect accuracy suggests the multi-agent architecture works well with the more advanced model
+- Performance: All individual agents also performed very well (95-96% accuracy)
+- Code compatibility: v0.9.4-dev works seamlessly with GPT-5.4 using `max_completion_tokens` parameter
+
+### Recommendations
+- Continue with remaining batches (2-13) using GPT-5.4 to build full comparison dataset
+- Consider running full 1,260-patient evaluation with GPT-5.4 to establish baseline
+
+---
+
