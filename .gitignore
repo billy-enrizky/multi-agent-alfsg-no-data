@@ -237,4 +237,4 @@ our_paper
 *.fdb_latexmk
 *.synctex.gz
 *.pdf
-!paper/figures/*.pdf
+!our_paper/figures/*.pdf
