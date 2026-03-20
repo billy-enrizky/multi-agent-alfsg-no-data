@@ -1,7 +1,108 @@
 # TODO - Full 1,260-Patient Evaluation
 
-**Last updated:** 2026-03-17 19:36:00
+**Last updated:** 2026-03-20 00:01:00
 **Plan:** docs/plans/2026-03-03-full-1260-patient-evaluation-plan.md
+
+## LaTeX Paper -- HEPATOLOGY Format (2026-03-19)
+
+- [x] Design spec: `docs/superpowers/specs/2026-03-19-alfsg-latex-paper-design.md`
+- [x] Implementation plan: `docs/superpowers/plans/2026-03-19-alfsg-latex-paper.md`
+- [x] Tasks 1-10: Initial manuscript drafting (JAMA format)
+- [x] HEPATOLOGY journal format restructuring (2026-03-19 17:37)
+  - Abstract: Background & Aims / Approach & Results / Conclusions (250 words max)
+  - Title page: CRediT contributions, correspondence, financial support, conflicts, MeSH keywords, abbreviation list
+  - References: Numbered superscript (vancouver BST)
+  - Ethics: Declarations of Helsinki and Istanbul
+  - AI disclosure in Methods
+  - 3 tables + 5 figures = 8 (HEPATOLOGY max)
+  - Version progression table moved to Supplemental Table S3
+- [x] HEPATOLOGY Instructions for Authors full compliance (2026-03-19 18:06)
+  - CRediT author contributions placeholder added to title page
+  - Conflicts of Interest: "Nothing to report." per HEPATOLOGY format
+  - Ethics statement: HEPATOLOGY required format (full IRB name/institution/number)
+  - Conclusions merged into Discussion as subsection (HEPATOLOGY: Intro/Methods/Results/Discussion only)
+  - Acknowledgements: Correct spelling, "Assistance with the study" + "Presentation" paragraphs
+  - Float specifiers: [H] -> [!htbp] for journal submission
+  - Supplemental Table S1: All FP patient IDs filled in, inverted FN/FP definitions fixed
+- [x] Data accuracy fixes (2026-03-19 18:54)
+  - Figure 2: Removed "proj 94%" from v0.7.0 label, removed overlapping embedded title
+  - Per-agent accuracy: Added missing Critical Care Specialist (88.5%), fixed Committee Chair (88.7% not 88.5%)
+  - Table 1: Added ALFSG-PI "Not calculable" row (205 patients, 16.3%) with footnote
+  - Supplemental Table S3: Expanded from 8 to 12 rows matching "12 major system versions" claim
+- [x] Figure fixes continued (2026-03-19 22:25)
+  - Figure 1: Widened Panel A boxes to prevent truncated edge labels
+  - Figure 5: Removed embedded title, fixed subtitle "(failures from Batch 1)" -> "(curated failure cases)", widened legend box to prevent label truncation
+- [x] HEPATOLOGY Instructions for Authors deep compliance pass (2026-03-19 20:35)
+  - Title page element order: CRediT Author Contributions added before Correspondence (HEPATOLOGY required order)
+  - Financial support: lowercase format per HEPATOLOGY template ("Financial support and sponsorship: None.")
+  - Conflicts of interest: "Nothing to report." (was "None." -- HEPATOLOGY requires exact phrasing)
+  - Acknowledgements: restructured with "Assistance with the study:" and "Presentation:" paragraphs
+  - Ethics statement: reformatted to match HEPATOLOGY example template with TODO placeholders
+  - Supplemental citations: Added Supplemental Figure S1 (Vignette Generation) and Supplemental Methods S2 (Architecture Experiments) -- all SDC now cited consecutively in main text
+  - Removed "novel insights" claim (HEPATOLOGY: "Claims to novelty or priority should be avoided")
+  - Added endfloat package option (commented out) for revised manuscript submission
+  - LaTeX compiles cleanly (23 pages, no errors)
+- [x] Figure redistribution (2026-03-19 22:44)
+  - Moved 5 figures from concentrated block at end of Results to near first `\ref` citations
+  - Fig1 (architecture) after Methods 2.3, Fig2 (batch accuracy) after Results 3.3, Fig3 (accuracy evolution) after Results 3.4, Fig4 (failure taxonomy) after Results 3.5, Fig5 (arch comparison) after Results 3.7
+  - Fig2/Fig3 renumbered: old Fig3 (batch accuracy) now Fig2, old Fig2 (evolution) now Fig3 (batch cited first)
+  - PDF now 22 pages (was 23)
+- [x] Float clustering deep fix (2026-03-19 23:32)
+  - Added `placeins` package and `\FloatBarrier` to prevent LaTeX float algorithm from clustering
+  - Moved Tables 2/3 and Figures into correct sections near `\ref` citations
+  - Verified all 8 floats on separate pages in rendered PDF
+- [x] Supplementary abbreviations + TRIPOD (2026-03-19 23:32)
+  - Added abbreviation footnotes to 3 tables: Phenotype Tags, Full Failure Taxonomy, Version Progression
+  - Replaced all `[X]` placeholders in TRIPOD checklist with actual page numbers
+  - Fixed 4 incorrect TRIPOD section references (2.3--2.5, 2.7, Supp. Table S3, 4.3--4.4)
+- [x] BibTeX warning fixes (2026-03-19 22:45)
+  - 4 `@misc` entries converted to `@article`: Tang2024, Ferber2024, OSullivan2024, Michael2023
+  - Fixed LaTeX encoding: `Sean` -> `Se\'{a}n` in OSullivan2024
+  - Zero BibTeX warnings
+- [x] Full reference verification audit (2026-03-19 23:15)
+  - Verified all 22 citations against PubMed/Crossref DOI lookups
+  - Fixed 17 entries with wrong DOIs, journals, volumes, pages, or authors
+  - Replaced non-existent OstermanGolkar2012 with McPhail2016 meta-analysis
+  - Removed McCoy2024 (nonexistent paper) and OSullivan2024 (single-agent, not multi-agent)
+  - Removed 6 unused bib entries; corrected manuscript claims for Michael2023, Park2023, Ferber2024
+  - Final state: 20 verified references, 0 missing, 0 unused, zero LaTeX warnings
+- [x] Deep reference re-verification audit (2026-03-19 23:30)
+  - 5 parallel agents verified all 20 references via DOI/PubMed/arXiv + audited every in-text citation claim
+  - CRITICAL FIX: Wei2022 bib entry was wrong paper ("Emergent Abilities" not "Chain-of-Thought") -- replaced
+  - CRITICAL FIX: Koch2017 (ALI paper) replaced with Koch2016 (ALFSG-PI paper, PMID 27085756)
+  - CRITICAL FIX: McPhail2016 sensitivity "58%--69%" corrected to "approximately 58%"
+  - Fixed: Karvellas2014 author (Corron not Catherine), Tang2024 missing author (Li, Ziming), Gilson2023 title (added USMLE)
+  - Fixed: main.tex ALF mortality citation changed from Koch2017 to Bernal2010
+  - Final state: 20 verified references, zero LaTeX warnings, zero BibTeX warnings
+- [x] Float distribution and whitespace deep fix (2026-03-20 00:01)
+  - Added 7 `\FloatBarrier` commands after every figure/table to prevent cross-section clustering
+  - Added `\@fptop=0pt` preamble fix to eliminate large whitespace gaps above figures on float-only pages
+  - Compacted section 2.3 enumerate with `[nosep]` to move Figure 1 from page 7 to page 6
+  - Cropped fig4-failure-taxonomy.pdf (41% whitespace removed) so Figure 4 + sections 3.6/3.7 share page 14
+  - Used `[H]` placement for Figure 5 so Discussion starts on same page (page 15)
+  - PDF reduced from 23 to 21 pages, zero errors
+
+**Output files (all in `our_paper/`):**
+- `main.tex` (21 pages, 1.5-spaced, HEPATOLOGY format)
+- `supplementary.tex` (17 pages, 7 sections incl. new Table S3)
+- `references.bib` (20 BibTeX entries, vancouver numbered style)
+- `computed_stats.txt` (bootstrap CIs and cohort demographics)
+- `figures/fig1-architecture.drawio` + `.pdf`
+- `figures/fig2-accuracy-evolution.drawio` + `.pdf`
+- `figures/fig3-batch-accuracy.drawio` + `.pdf`
+- `figures/fig4-failure-taxonomy.drawio` + `.pdf`
+- `figures/fig5-architecture-comparison.drawio` + `.pdf`
+
+**Remaining TODOs (require PI input):**
+- [x] Fill in author names and institutions
+- [x] Financial support: None
+- [x] Conflicts of interest: Nothing to report
+- [ ] Author contributions: CRediT taxonomy placeholder added --- PI to fill in per-author roles
+- [ ] Add IRB number, committee name, and institution (main.tex Methods 2.1)
+- [ ] Add Presentation statement in Acknowledgements (state meeting or "None")
+- [ ] Graphical abstract (HEPATOLOGY encourages; use provided PowerPoint template)
+
+---
 
 ## Active Run: v0.9.4-dev GPT-5.4 Comparison (2026-03-17)
 
@@ -164,8 +265,12 @@ Redesigned: selective injection (only hard-phenotype patients get enhanced promp
 - [x] Constraint patients: 5/5 (100%)
 - [x] Batch 1 (v1.3.0-dev): 98/100 (98.0%) -- improved over v1.2.0-dev (97) but still below v0.9.4-dev (99)
 - [x] Batch 2 (v1.3.0-dev): 81/100 (81.0%) -- same as v1.2.0-dev, still below v0.9.4-dev (84)
+- [x] 40-patient hard set (v1.3.0-dev): 33/40 (82.5%) -- below v1.2.0-dev (34/40), above prompt-only (8/40)
+  - Failures (7): 3938 (FP), 5109, 5385, 6582, 7114, 8762, 8968 (FN)
+  - vs v1.2.0-dev: fixed 3610, regressed 7114 and 8762. Net -1.
+  - Output: `agent_predictions_gpt-5.2_20260305_162015.xlsx`
 
-**Conclusion:** Selective injection protects normal patients but still regresses on tagged patients. ANY injection changes LLM behavior unpredictably. Net effect on Batch 2 is negative.
+**Conclusion:** Selective injection protects normal patients but still regresses on tagged patients. ANY injection changes LLM behavior unpredictably. Net effect on Batch 2 is negative. On the 40-patient hard set, v1.3.0-dev (33/40) slightly underperforms v1.2.0-dev (34/40), confirming that tiered/soft binding language does not recover the regression.
 
 ### Version Comparison Summary
 
@@ -173,7 +278,7 @@ Redesigned: selective injection (only hard-phenotype patients get enhanced promp
 |---------|-------------|---------|---------|---------|
 | v0.9.4-dev | Prompt-only | 99/100 | 84/100 | 8/40 |
 | v1.2.0-dev | Inject all + binding | 97/100 | 81/100 | 34/40 |
-| v1.3.0-dev | Selective inject + tiered | 98/100 | 81/100 | TBD |
+| v1.3.0-dev | Selective inject + tiered | 98/100 | 81/100 | 33/40 |
 
 ### Git Tags Pushed (2026-03-05)
 

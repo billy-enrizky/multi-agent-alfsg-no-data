@@ -1,6 +1,86 @@
 # Lessons Learned
 
-**Last updated:** 2026-03-17 16:55:00
+**Last updated:** 2026-03-20 00:01:00
+
+## Reference Verification (2026-03-19)
+
+### All BibTeX metadata must be verified against PubMed/Crossref
+- AI-generated references frequently have hallucinated DOIs, wrong journals, wrong volumes/pages, wrong authors, or conflated papers
+- In this manuscript: 17 of 22 original citations had incorrect metadata; only 5 were fully correct
+- DOIs are the single most reliable verification method -- fetch the DOI and confirm title/authors match
+- Common failure modes: correct title + wrong DOI, correct author + wrong co-authors, two papers conflated into one entry
+- Always check: (1) DOI resolves to the right paper, (2) journal name matches, (3) volume/issue/pages match, (4) author list is complete and correct, (5) year matches
+- Manuscript claims must also be verified: ensure the cited paper actually supports the specific claim made
+
+## LaTeX Paper Writing (2026-03-19)
+
+### LaTeX Float Placement
+- LaTeX's float algorithm clusters floats when insufficient text separates them, even with `[!htbp]` specifiers
+- Moving float environments in the source to be near their `\ref` citations is necessary but not sufficient -- LaTeX may still defer them
+- `\usepackage{placeins}` + targeted `\FloatBarrier` commands prevent floats from crossing section boundaries without wasting space (unlike `\clearpage`)
+- Always verify rendered PDF page-by-page after restructuring floats -- source order does not guarantee rendered order
+- **Float-only pages have centered content by default**, leaving large whitespace gaps above and below figures. Fix with `\makeatletter \setlength{\@fptop}{0pt} \setlength{\@fpbot}{0pt plus 1fil} \makeatother` to push floats to the top of their pages
+- **draw.io PDF exports often have large internal whitespace** (e.g., fig4-failure-taxonomy.pdf had 41% whitespace below content). Use `pdfcrop` to auto-trim before including in LaTeX. This can make the difference between a figure needing its own page vs. sharing a page with text
+- **To force text after a figure on the same page**, use `\usepackage{float}` and `[H]` placement instead of `[!htbp]`. The `[H]` specifier makes the figure a non-floating element so subsequent text flows naturally after it. Use sparingly -- only when you specifically need text to share a page with a figure
+- **Compacting enumerate lists** with `\usepackage{enumitem}` + `[nosep]` can recover significant vertical space (enough to shift figures to earlier pages by cascading the space savings through the document)
+
+### Supplementary Document Completeness
+- Each table in supplementary materials needs its own abbreviation footnote (independent from main text)
+- TRIPOD checklists must reference actual page numbers, not placeholders -- fill these in only after the main manuscript is fully compiled
+- Section references in TRIPOD must match the actual manuscript structure (verify subsection numbering after any restructuring)
+
+### Paper Architecture
+- Manuscript (`main.tex`) and supplementary (`supplementary.tex`) are standalone LaTeX documents sharing the same package set
+- draw.io CLI (`/opt/homebrew/bin/drawio`) exports `.drawio` -> `.pdf` for `\includegraphics`; must add `!our_paper/figures/*.pdf` exception in `.gitignore` since `*.pdf` is globally ignored for LaTeX aux files
+- `\usepackage[hidelinks]{hyperref}` prevents red boxes around TOC links and cross-references
+- `\caption*{}` requires the `caption` package; without it renders as "Table N: *"
+- Long equations: use `\begin{multline}` instead of `\begin{equation}` to split across lines
+- `\tolerance=1000` + `\emergencystretch=1em` fixes minor overfull hbox from dense numeric paragraphs without visible quality loss
+- Long author lists (6+ authors with superscript affiliations) cause overfull hbox in `\author{}` -- break with `\\` after 2-3 names
+
+### HEPATOLOGY (AASLD) Journal Format
+- Abstract must use **Background & Aims / Approach & Results / Conclusions** headings (NOT JAMA-style Importance/Objective/Design/Exposures/Results/Conclusions), max 250 words
+- All abbreviations must be defined in the abstract for standalone readability
+- Title must include study design (e.g., "A Retrospective Prognostic Study")
+- Title page requires: correspondence (full address + email), financial support, conflicts of interest, 5-7 MeSH keywords (not in title), alphabetical abbreviation list. Author contributions (CRediT) are optional per PI -- HEPATOLOGY guidelines list them but they can be omitted
+- Max 8 figures + tables combined, max 6 panels per figure
+- References: AMA/JAMA numbered superscript style -- use `\usepackage[numbers,super,sort&compress]{natbib}` with `\bibliographystyle{vancouver}` and `\cite{}` (not `\citep{}`)
+- `vancouver.bst` is available in standard TeX Live; gives close-to-JAMA format (lists 6 authors vs HEPATOLOGY's 3 for >6 author refs, but acceptable for initial submission)
+- Ethics statement must explicitly reference Declarations of Helsinki and Istanbul, plus IRB approval with institution name and number
+- AI disclosure required in Methods: how AI was used and which tool
+- Reporting guidelines (TRIPOD for prediction models) must be named and cited in Methods
+- Acknowledgments must have separate paragraphs: "Assistance with the study" and "Presentation"
+- 1.5 spacing (`\onehalfspacing`), 10-12pt body text
+- Initial submission allows single-file with embedded figures; revised manuscripts need strict separation
+- Table abbreviations must be defined in footnotes for each table independently
+- HEPATOLOGY charges $500/page for color figures -- consider grayscale conversion before submission
+
+### Subagent-Driven Development for Non-Code Tasks
+- The subagent-driven pattern (fresh agent per task + spec review) works well for LaTeX paper writing, not just code
+- Figures (draw.io) can be parallelized across subagents since they have no dependencies
+- The manuscript writing task (Task 8) requires the most context injection -- provide all data sources, verified stats, and cross-reference info upfront
+- Compilation verification after each task prevents error accumulation
+
+### Data Verification
+- Always cross-check computed statistics against known values before writing into the manuscript
+- Per-agent accuracy must be verified against the aggregated Excel (`Final_Correct`, `hepatologist_correct`, `critical_care_correct`, `transplant_surgeon_correct` columns). The Committee Chair final accuracy = system overall accuracy since the Chair renders the final prediction.
+- ALFSG-PI categories may not sum to 100% if input variables are missing for some patients. Always add a "Not calculable" row or footnote when presenting ALFSG-PI category breakdowns.
+- Supplemental tables must match claims in the main text (e.g., "12 versions" requires 12 table rows, not 8 milestone groupings)
+
+### Figure Best Practices
+- Journal figures should NOT have embedded titles -- the LaTeX `\caption{}` serves this purpose. Embedded titles cause overlap with annotation callouts.
+- Data labels on figures must match the paper text exactly. Internal annotations (e.g., "projected" accuracy from partial retests) should not appear in final figures.
+- Bootstrap CIs should be verified to contain the point estimate (e.g., 88.7% within 86.9-90.3%)
+- draw.io legend boxes must be sized to contain ALL legend labels including their widths. Calculate: rightmost_label_x + rightmost_label_width must be < legend_bg_x + legend_bg_width. Add 20px padding.
+- Figure subtitles must accurately describe the data source. The 40-patient hard set spans Batches 2-13, not just Batch 1 -- use "curated failure cases" rather than attributing to a single batch.
+- Figures should be placed near their first `\ref` citation in the text, not clustered at the end of a section. Use `[!htbp]` float specifiers and place the `\begin{figure}...\end{figure}` block immediately after the paragraph containing the first citation.
+- LaTeX auto-renumbers figures based on the order `\begin{figure}` environments appear in the source, NOT based on filenames. When redistributing figures from a concentrated block to near their citations, the numbering may change if the citation order differs from the original figure order. Update `\label{}` names accordingly but `\ref{}` cross-references resolve automatically.
+
+### BibTeX and Bibliography
+- `vancouver.bst` (and most journal BST files) require `@article` type for proper author rendering. `@misc` entries produce "empty author and editor" and "missing publisher" warnings because the BST expects fields like `journal` that `@misc` doesn't provide.
+- For arXiv preprints with vancouver BST: use `@article` with `journal = {arXiv preprint arXiv:XXXX.XXXXX}` instead of `@misc` with `eprint`/`archivePrefix`/`primaryClass` fields. The `eprint` fields are designed for `arxiv.bst` or similar, not for medical journal styles.
+- Special characters in author names (e.g., accented letters) must use LaTeX encoding: `Se\'{a}n` not `Sean` or Unicode `Sean`. BibTeX may silently mangle Unicode characters.
+- Cohort characteristics computed from `clinical_vignettes.xlsx` must match what was reported in evaluations
 
 ## v1.2.0-dev: Conditional Prompting (Phenotype-Based Skill Injection)
 
@@ -126,10 +206,24 @@ The 40 patients are a DEVELOPMENT set (hand-picked hardest failures). Tuning to 
 **Results:**
 - Batch 1: **98/100** (v0.9.4-dev 99, v1.2.0-dev 97) -- recovered 1 regression (1463)
 - Batch 2: **81/100** (v0.9.4-dev 84, v1.2.0-dev 81) -- same as v1.2.0-dev, still -3 vs baseline
+- 40-patient hard set: **33/40 = 82.5%** (v1.2.0-dev 34/40, prompt-only 8/40) -- net -1 vs v1.2.0-dev
+  - Failures (7): 3938 (FP), 5109, 5385, 6582, 7114, 8762, 8968 (FN)
+  - vs v1.2.0-dev: fixed 3610, regressed 7114 and 8762
+  - Output: `agent_predictions_gpt-5.2_20260305_162015.xlsx`
 - 5 regressions (all tagged patients): 1633, 1726 (FP -- even soft P1B language flips LLM), 1866, 2211, 2346 (FN)
 - 3 improvements: 1885, 2011, 2323
 
 **Key lesson: ANY injection into the prompt changes LLM behavior unpredictably.** Even "informational" criteria and "soft" language cause regressions on some patients while improving others. The net effect on Batch 2 is negative. Selective injection protects normal patients (Batch 1 improved) but does not solve the regression problem on tagged patients.
+
+**40-patient hard set lesson:** Tiered binding (SOFT language for P1B/P1C/P1D) did not recover the regression from full injection. v1.3.0-dev (33/40) actually performed slightly worse than v1.2.0-dev (34/40) on the hard cases, while also failing to improve Batch 2. The regressions (7114, 8762) are both patients where the selective injection gate triggered phenotype tags, confirming that the problem is injection itself, not binding strength.
+
+**Full version comparison (all data complete):**
+
+| Version | Batch 1 | Batch 2 | 40-Hard | Architecture |
+|---------|---------|---------|---------|-------------|
+| v0.9.4-dev | 99/100 | 84/100 | 8/40 (20%) | Prompt-only |
+| v1.2.0-dev | 97/100 | 81/100 | 34/40 (85%) | Full injection + binding |
+| v1.3.0-dev | 98/100 | 81/100 | 33/40 (82.5%) | Selective injection + tiered |
 
 **Implication:** The v0.9.4-dev prompt-only approach may be a local optimum. Beating 88.7% requires either: (a) finding injection language that is net-positive across ALL batches, (b) a fundamentally different approach (e.g., ensemble, retrieval-augmented, or model fine-tuning), or (c) accepting that 88.7% is near the ceiling for this architecture.
 

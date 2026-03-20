@@ -225,6 +225,7 @@ docs
 our_paper
 
 # LaTeX auxiliary files
+email*
 *.aux
 *.bbl
 *.blg
