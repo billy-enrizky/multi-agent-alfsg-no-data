@@ -223,6 +223,7 @@ node_modules
 presentation
 docs
 our_paper
+local_docs
 
 # LaTeX auxiliary files
 email*
