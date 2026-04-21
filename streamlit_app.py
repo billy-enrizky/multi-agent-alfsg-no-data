@@ -3,6 +3,7 @@ import pandas as pd
 import logging
 import io
 import os
+from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
 from multi_agent_system import create_multi_agent_graph, process_patient_day
 
@@ -81,12 +82,30 @@ def check_auth():
 
 @st.cache_data
 def load_vignettes():
-    """Load clinical vignettes data."""
+    """Load clinical vignettes from Azure Blob Storage."""
     try:
-        df = pd.read_excel("clinical_vignettes.xlsx")
+        account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+        account_key = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
+        container_name = os.getenv("AZURE_STORAGE_CONTAINER", "clinical-data")
+
+        if not account_name or not account_key:
+            st.error("Azure Storage credentials not configured in .env")
+            return None
+
+        blob_service = BlobServiceClient(
+            account_url=f"https://{account_name}.blob.core.windows.net",
+            credential=account_key,
+        )
+        blob_client = blob_service.get_blob_client(
+            container=container_name, blob="clinical_vignettes.xlsx"
+        )
+        download_stream = blob_client.download_blob()
+        data = download_stream.readall()
+        df = pd.read_excel(io.BytesIO(data))
         return df
     except Exception as e:
-        st.error(f"Error loading clinical_vignettes.xlsx: {e}")
+        logger.error(f"Error loading clinical vignettes from blob storage: {e}")
+        st.error(f"Error loading clinical vignettes from Azure Blob Storage: {e}")
         return None
 
 
