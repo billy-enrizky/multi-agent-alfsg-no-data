@@ -121,20 +121,21 @@ def format_confidence(confidence):
 
 
 def display_agent_decision(title, agent_output):
-    """Display a single agent's decision."""
-    st.subheader(title)
-    if agent_output:
-        decision_color = "#28a745" if agent_output.decision == "Yes" else "#dc3545"
-        st.markdown(
-            f'<p style="color: {decision_color}; font-weight: bold; font-size: 1.2rem;">'
-            f"Decision: {agent_output.decision}</p>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(f"**Confidence:** {format_confidence(agent_output.confidence)}")
-        st.markdown("**Reasoning:**")
-        st.write(agent_output.reasoning)
-    else:
-        st.error("No decision available")
+    """Display a single agent's decision in a styled container."""
+    with st.container(border=True):
+        st.subheader(title)
+        if agent_output:
+            decision_color = "#28a745" if agent_output.decision == "Yes" else "#dc3545"
+            st.markdown(
+                f'<p style="color: {decision_color}; font-weight: bold; font-size: 1.2rem;">'
+                f"Decision: {agent_output.decision}</p>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"**Confidence:** {format_confidence(agent_output.confidence)}")
+            st.markdown("**Reasoning:**")
+            st.write(agent_output.reasoning)
+        else:
+            st.error("No decision available")
 
 
 def main():
