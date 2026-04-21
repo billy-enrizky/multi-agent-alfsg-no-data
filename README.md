@@ -135,8 +135,6 @@ multi-agent-alfsg/
   streamlit_app.py                 # Streamlit web app for interactive predictions
   ALFSG_12MAR2025_processed.pkl    # Processed patient data (pickle)
   clinical_vignettes.xlsx          # Generated clinical vignettes (all patients, all days)
-  chain_of_thought_example.md      # Example of agent chain-of-thought reasoning
-  prediction_differences_analysis.md # Analysis of prediction differences across models
   STREAMLIT_README.md              # Streamlit app documentation
   pyproject.toml                   # Python project config and dependencies
   uv.lock                          # Dependency lock file
