@@ -217,7 +217,13 @@ def main():
                 # Clinical vignette
                 st.header("Clinical Vignette")
                 vignette = patient_row.get("patient_day_vignette", "N/A")
-                st.text_area("", value=vignette, height=400, disabled=True, key="vignette")
+                st.markdown(
+                    f'<div style="background-color: #ffffff; border: 1px solid #ddd; '
+                    f'border-radius: 8px; padding: 1rem; max-height: 400px; '
+                    f'overflow-y: auto; white-space: pre-wrap; font-family: monospace; '
+                    f'font-size: 0.85rem;">{vignette}</div>',
+                    unsafe_allow_html=True,
+                )
 
                 st.markdown("---")
 
