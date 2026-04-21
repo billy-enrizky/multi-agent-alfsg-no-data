@@ -1,10 +1,16 @@
 # Multi-agent-alfsg
-Multi Agent AI Transplant Committee for ALFSG project
+
+Multi-Agent AI Transplant Committee for predicting 21-day transplant-free survival in acute liver failure (ALF), using the ALFSG registry.
+
+Four specialized LLM agents (Hepatologist, Critical Care Physician, Transplant Surgeon, Committee Chair) evaluate patient clinical data in parallel, then a weighted committee synthesis produces a final survival prediction.
+
+Built with LangGraph orchestration and GPT-5.2 via Azure OpenAI.
 
 ## Demo
+
 https://github.com/user-attachments/assets/da12745b-465e-4377-92f4-e030e6d3a2fe
 
-## Mermaid Diagram
+## System Architecture
 
 ```mermaid
 graph TD;
@@ -116,3 +122,44 @@ graph TD;
 | `F27Q04 (HE Grade) @ [Day 1, Day 2, Day 3]` <br> `[1, 2, 3]` | **Trend: Neurologic Deterioration.** Hepatic encephalopathy is worsening from Grade 1 to Grade 3, a critical change. |
 | `ALT (U/L) @ [Day 1, Day 2, Day 3]` <br> `[7500, 4200, 2100]` | **Trend: Rapidly Improving (Washout).** ALT is in rapid decline, consistent with recovery or washout after an acute insult. |
 | `WBC (k/uL) @ [Day 1, Day 2]` <br> `[8.2, 17.5]` | **Trend: Sudden Spike.** WBC has spiked from 8.2 to 17.5, suggesting a new inflammatory process or developing infection. |
+
+## Repository Structure
+
+```
+multi-agent-alfsg/
+  multi_agent_system.py            # Main multi-agent prediction system (LangGraph + GPT-5.2)
+  create_vignettes.py              # Generates clinical vignettes from raw ALFSG data
+  create_agent_variable_mapping.py # Creates agent-to-variable mapping table
+  create_label_legend.py           # Creates label legend for vignette categorical encoding
+  process_excel.py                 # Excel data processing utilities
+  streamlit_app.py                 # Streamlit web app for interactive predictions
+  ALFSG_12MAR2025_processed.pkl    # Processed patient data (pickle)
+  clinical_vignettes.xlsx          # Generated clinical vignettes (all patients, all days)
+  chain_of_thought_example.md      # Example of agent chain-of-thought reasoning
+  prediction_differences_analysis.md # Analysis of prediction differences across models
+  STREAMLIT_README.md              # Streamlit app documentation
+  pyproject.toml                   # Python project config and dependencies
+  uv.lock                          # Dependency lock file
+  package.json                     # Node.js dependencies (presentation tooling)
+  .devcontainer/devcontainer.json  # Dev container configuration
+```
+
+## Setup
+
+```bash
+# Install dependencies
+uv sync
+
+# Set up environment variables (Azure OpenAI credentials)
+cp .env.example .env
+# Edit .env with your GPT5_2_ENDPOINT_URL and GPT5_2_AZURE_OPENAI_API_KEY
+
+# Run predictions for first 100 patients
+uv run multi_agent_system.py --num_patient 100 --deployment gpt-5.2
+
+# Run predictions for specific patients
+uv run multi_agent_system.py --patient_id 1279 1101 1536 --deployment gpt-5.2
+
+# Launch Streamlit app
+uv run streamlit run streamlit_app.py
+```
