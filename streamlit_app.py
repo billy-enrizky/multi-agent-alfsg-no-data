@@ -187,8 +187,6 @@ def main():
             format_func=lambda x: f"Day {int(x)}",
         )
 
-        st.markdown("---")
-
         deployment = "gpt-5.2"
 
         st.markdown("---")
@@ -216,24 +214,10 @@ def main():
                 st.success("Prediction completed")
                 st.markdown("---")
 
-                # Clinical vignettes
-                st.header("Clinical Vignettes")
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.subheader("Hepatologist")
-                    vignette = patient_row.get("hepatologist_vignette", "N/A")
-                    st.text_area("", value=vignette, height=300, disabled=True, key="hep_vig")
-
-                with col2:
-                    st.subheader("Critical Care Physician")
-                    vignette = patient_row.get("critical_care_physician_vignette", "N/A")
-                    st.text_area("", value=vignette, height=300, disabled=True, key="cc_vig")
-
-                with col3:
-                    st.subheader("Transplant Surgeon")
-                    vignette = patient_row.get("transplant_surgeon_vignette", "N/A")
-                    st.text_area("", value=vignette, height=300, disabled=True, key="ts_vig")
+                # Clinical vignette
+                st.header("Clinical Vignette")
+                vignette = patient_row.get("patient_day_vignette", "N/A")
+                st.text_area("", value=vignette, height=400, disabled=True, key="vignette")
 
                 st.markdown("---")
 
