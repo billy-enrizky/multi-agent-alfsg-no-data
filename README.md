@@ -133,8 +133,6 @@ multi-agent-alfsg/
   create_label_legend.py           # Creates label legend for vignette categorical encoding
   process_excel.py                 # Excel data processing utilities
   streamlit_app.py                 # Streamlit web app for interactive predictions
-  ALFSG_12MAR2025_processed.pkl    # Processed patient data (pickle)
-  clinical_vignettes.xlsx          # Generated clinical vignettes (all patients, all days)
   STREAMLIT_README.md              # Streamlit app documentation
   pyproject.toml                   # Python project config and dependencies
   uv.lock                          # Dependency lock file
