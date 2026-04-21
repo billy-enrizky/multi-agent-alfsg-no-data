@@ -189,11 +189,7 @@ def main():
 
         st.markdown("---")
 
-        deployment = st.selectbox(
-            "Model Deployment",
-            options=["gpt-5.2", "gpt-5", "gpt-4.1-mini", "gpt-5-mini", "claude-opus-4-1", "claude-sonnet-4-5"],
-            index=0,
-        )
+        deployment = "gpt-5.2"
 
         st.markdown("---")
 
