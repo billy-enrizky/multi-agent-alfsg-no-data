@@ -1,4 +1,6 @@
 # Byte-compiled / optimized / DLL files
+azure_results
+*.pkl
 __pycache__/
 *.py[codz]
 *$py.class
