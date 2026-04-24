@@ -1398,7 +1398,7 @@ You must strictly adhere to this JSON format:
                 logger.info(f"Fallback: Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -1418,7 +1418,7 @@ You must strictly adhere to this JSON format:
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -1630,7 +1630,7 @@ You must strictly adhere to this JSON format:
                 logger.info(f"Fallback: Calling LLM for Critical Care agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -1650,7 +1650,7 @@ You must strictly adhere to this JSON format:
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -1850,7 +1850,7 @@ You must strictly adhere to this JSON format:
                 logger.info(f"Fallback: Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -1870,7 +1870,7 @@ You must strictly adhere to this JSON format:
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -2059,9 +2059,7 @@ WORKED EXAMPLE 2 (NEAR-MISS RECOVERY DOES NOT SAVE): Day 7, APAP, peak INR 5.2, 
     if phenotype_tags:
         logger.info(f"Committee Chair: phenotype tags for patient {state['subject_id']}: {phenotype_tags}")
 
-    prompt = f"""{system_prompt}
-
-Hepatologist Decision (33.33% weight):
+    prompt = f"""Hepatologist Decision (33.33% weight):
 Decision: {hepatologist.decision if hepatologist else "N/A"}
 Reasoning: {hepatologist.reasoning if hepatologist else "N/A"}
 
@@ -2143,12 +2141,13 @@ Provide your final synthesis and prediction."""
         # Pure LLM output -- no post-processing override.
         # Binding rules are injected as a skill block into the prompt so the LLM
         # makes the decision itself, informed by deterministic criteria.
-        state['final_prediction'] = prediction
-        state['llm_prediction'] = prediction.prediction
-        state['post_processed'] = False
-        state['override_reason'] = ""
-        logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
-        
+
+    state['final_prediction'] = prediction
+    state['llm_prediction'] = prediction.prediction
+    state['post_processed'] = False
+    state['override_reason'] = ""
+    logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
+
     return state
 
 def create_multi_agent_graph():
