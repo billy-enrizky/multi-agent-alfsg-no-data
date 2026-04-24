@@ -476,7 +476,7 @@ Based on this clinical information, predict whether this patient will achieve sp
                 logger.info(f"Fallback: Calling LLM for Hepatologist agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -496,7 +496,7 @@ Based on this clinical information, predict whether this patient will achieve sp
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -693,7 +693,7 @@ Based on this clinical information, predict whether this patient will achieve sp
                 logger.info(f"Fallback: Calling LLM for Critical Care agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -713,7 +713,7 @@ Based on this clinical information, predict whether this patient will achieve sp
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -898,7 +898,7 @@ Based on this clinical information, predict whether this patient will achieve sp
                 logger.info(f"Fallback: Calling LLM for Transplant Surgeon agent with deployment name: {deployment_name}")
                 response_text = call_llm(client, client_type, deployment_name, system_prompt, prompt, json_mode=False)
                 decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-                confidence_val = 0.7
+                confidence_val = 0.0  # fallback: model did not provide confidence
                 if "confidence" in response_text.lower():
                     conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                     if conf_match:
@@ -918,7 +918,7 @@ Based on this clinical information, predict whether this patient will achieve sp
             logger.warning(f"No JSON object found in response, parsing as text")
             # Parse as plain text
             decision_val = "Yes" if "yes" in response_text.lower() and "no" not in response_text.lower()[:50] else "No"
-            confidence_val = 0.7
+            confidence_val = 0.0  # fallback: model did not provide confidence
             if "confidence" in response_text.lower():
                 conf_match = re.search(r'confidence[:\s]+([0-9.]+)', response_text.lower())
                 if conf_match:
@@ -1070,9 +1070,7 @@ WORKED EXAMPLE 2 (NEAR-MISS RECOVERY DOES NOT SAVE): Day 7, APAP, peak INR 5.2, 
 7. **Day 1-3 EARLY ASSESSMENT RULE (BINDING):** At Day 1-3, no formal recovery criteria (Priority 1/1B/1C) are available. If Pre-Check C is triggered (mechanical ventilation), predict DEATH regardless of weighted vote. If Pre-Check B is triggered (and the Bilirubin Rising Exception does NOT apply), predict DEATH. DAY 1 FAVORABLE OVERRIDE: At Day 1 specifically, if Pre-Check B Day 1 exception is active (ammonia >150 BUT HE 0-1 AND no vent AND no pressors) AND the Hepatologist predicts Yes AND ALFSG-PI >85%: predict SURVIVAL regardless of CC/TS votes. Rationale: The Hepatologist is the liver specialist, and their favorable assessment at Day 1 with high ALFSG-PI and no organ support outweighs CC/TS concerns about ammonia when the Day 1 exception explicitly makes ammonia non-binding. CC and TS often vote No based on ammonia risk despite the exception -- this override corrects that bias. If neither Pre-Check B nor C is triggered AND no Day 1 favorable override applies AND no other binding override applies, follow the WEIGHTED VOTE. The ONLY exceptions at Day 1-3 that can override the weighted vote are: binding Pre-Check B death override, binding Pre-Check C death override, and the Day 1 favorable survival override above.
 8. Otherwise: follow the weighted vote. IMPORTANT: You may ONLY reach this step if NO binding rule above (Pre-Checks, Priorities, Rules 5B, 6) has been triggered. If you find yourself here while the patient has grade 4 HE and no formal recovery criteria -- STOP, you have skipped Rule 5B. Go back and check."""
 
-    prompt = f"""{system_prompt}
-
-Hepatologist Decision (33.33% weight):
+    prompt = f"""Hepatologist Decision (33.33% weight):
 Decision: {hepatologist.decision if hepatologist else "N/A"}
 Reasoning: {hepatologist.reasoning if hepatologist else "N/A"}
 
@@ -1150,9 +1148,9 @@ Provide your final synthesis and prediction."""
         # is designed to override the weighted vote when clinical criteria
         # (demonstrated recovery, death overrides) warrant it.
 
-        state['final_prediction'] = prediction
-        logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
-        
+    state['final_prediction'] = prediction
+    logger.info(f"Final prediction: {prediction.prediction} (confidence: {prediction.confidence:.2f})")
+
     return state
 
 def create_multi_agent_graph():
